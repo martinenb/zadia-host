@@ -12,6 +12,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
+# BACKEND_URL est passé comme build ARG pour être baked dans next build
+ARG BACKEND_URL=http://host.docker.internal:8082
+ENV BACKEND_URL=$BACKEND_URL
 RUN npm run build
 
 # Image finale de production
