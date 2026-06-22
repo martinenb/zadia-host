@@ -8,6 +8,7 @@ RUN apk add --no-cache git
 COPY go.mod ./
 RUN go mod download
 RUN go get github.com/canonical/lxd/client@latest
+RUN go get github.com/gorilla/websocket@latest
 
 COPY . .
 RUN go mod tidy

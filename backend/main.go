@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"os"
 
 	"github.com/gofiber/fiber/v2"
@@ -30,6 +31,20 @@ func main() {
 	}
 	go handlers.StartSubdomainProxy(proxyPort)
 
+	// Démarrer le serveur WebSocket terminal de recovery sur port 8085
+	terminalPort := os.Getenv("TERMINAL_PORT")
+	if terminalPort == "" {
+		terminalPort = "8085"
+	}
+	go func() {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/terminal/", handlers.TerminalHandler)
+		log.Printf("Terminal WebSocket démarré sur le port %s", terminalPort)
+		if err := http.ListenAndServe(":"+terminalPort, mux); err != nil {
+			log.Printf("Erreur serveur terminal: %v", err)
+		}
+	}()
+
 	app := fiber.New(fiber.Config{
 		BodyLimit: 200 * 1024 * 1024, // 200 MB
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
@@ -55,6 +70,7 @@ func main() {
 	api.Post("/vps/:id/stop", handlers.StopVPS)
 	api.Post("/vps/:id/setup-ssh", handlers.SetupSSH)
 	api.Post("/vps/:id/deploy", handlers.DeployProject)
+	api.Post("/vps/:id/terminal-token", handlers.CreateTerminalToken)
 
 	// Routes Variables d'environnement
 	api.Get("/vps/:id/env", handlers.GetEnvVars)

@@ -8,7 +8,11 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import DeploySection from "@/components/DeploySection"
 import EnvVarsSection from "@/components/EnvVarsSection"
+import dynamic from "next/dynamic"
 import { ArrowLeft, Play, Square, Trash2, Cpu, HardDrive, MemoryStick, ExternalLink, Loader2, Terminal } from "lucide-react"
+
+// Import dynamique : xterm.js nécessite le navigateur (pas de SSR)
+const VPSTerminal = dynamic(() => import("@/components/VPSTerminal"), { ssr: false })
 
 interface VPS {
   id: number
@@ -133,6 +137,7 @@ export default function VPSDetailPage() {
   const [vps, setVps] = useState<VPS | null>(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState("")
+  const [rightTab, setRightTab] = useState<"env" | "terminal">("env")
 
   const fetchVPS = useCallback(async () => {
     try {
@@ -359,50 +364,90 @@ export default function VPSDetailPage() {
 
         {/* Colonne droite */}
         <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium">
-                {vps.type === "vps" ? "Variables d'environnement" : "Déploiement ZIP"}
-              </CardTitle>
-              <CardDescription className="text-xs">
-                {vps.type === "vps"
-                  ? "Injectées dans les sessions SSH via /etc/environment"
-                  : "Déposez votre projet en ZIP — détection automatique du framework"
-                }
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {vps.type === "vps" ? (
-                <EnvVarsSection vpsId={vps.id} />
-              ) : vps.status === "running" ? (
-                <DeploySection
-                  vpsId={vps.id}
-                  subdomain={vps.subdomain}
-                  deployStatus={vps.deploy_status}
-                  onDeployStart={fetchVPS}
-                />
-              ) : (
-                <div className="flex items-center justify-center py-12 text-center">
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      Le VPS doit être en ligne pour déployer du code.
-                    </p>
-                    {vps.status === "stopped" && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mt-3"
-                        onClick={() => handleAction("start")}
-                      >
-                        <Play className="h-4 w-4 mr-2" />
-                        Démarrer le VPS
-                      </Button>
-                    )}
-                  </div>
+          {vps.type === "vps" ? (
+            <Card>
+              <CardHeader className="pb-0">
+                <div className="flex items-center gap-1 border-b border-border -mx-6 px-6 pb-0">
+                  <button
+                    onClick={() => setRightTab("env")}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      rightTab === "env"
+                        ? "border-primary text-foreground"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Variables d&apos;environnement
+                  </button>
+                  <button
+                    onClick={() => setRightTab("terminal")}
+                    className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      rightTab === "terminal"
+                        ? "border-primary text-foreground"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Terminal className="h-3.5 w-3.5" />
+                    Terminal de recovery
+                  </button>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              </CardHeader>
+              <CardContent className="pt-4">
+                {rightTab === "env" ? (
+                  <>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Injectées dans les sessions SSH via /etc/environment
+                    </p>
+                    <EnvVarsSection vpsId={vps.id} />
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Shell bash en mode recovery — aucun processus auto-démarré. Idéal pour déboguer ou réparer le VPS.
+                    </p>
+                    <VPSTerminal vpsId={vps.id} status={vps.status} />
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">Déploiement ZIP</CardTitle>
+                <CardDescription className="text-xs">
+                  Déposez votre projet en ZIP — détection automatique du framework
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {vps.status === "running" ? (
+                  <DeploySection
+                    vpsId={vps.id}
+                    subdomain={vps.subdomain}
+                    deployStatus={vps.deploy_status}
+                    onDeployStart={fetchVPS}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center py-12 text-center">
+                    <div>
+                      <p className="text-sm text-muted-foreground">
+                        Le VPS doit être en ligne pour déployer du code.
+                      </p>
+                      {vps.status === "stopped" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-3"
+                          onClick={() => handleAction("start")}
+                        >
+                          <Play className="h-4 w-4 mr-2" />
+                          Démarrer le VPS
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>
