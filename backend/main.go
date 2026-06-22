@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 
+	fiberws "github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -41,6 +42,15 @@ app := fiber.New(fiber.Config{
 		AllowHeaders: "Origin, Content-Type, Accept",
 		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
 	}))
+
+	// WebSocket terminal — port 8083/ws/terminal/:id?token=xxx
+	app.Use("/ws/terminal/", func(c *fiber.Ctx) error {
+		if fiberws.IsWebSocketUpgrade(c) {
+			return c.Next()
+		}
+		return fiber.ErrUpgradeRequired
+	})
+	app.Get("/ws/terminal/:id", fiberws.New(handlers.FiberTerminalHandler))
 
 	api := app.Group("/api")
 	api.Get("/vps", handlers.GetAllVPS)

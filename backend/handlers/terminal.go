@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	fiberws "github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gorilla/websocket"
 	"zadia-host/db"
@@ -80,7 +81,97 @@ func CreateTerminalToken(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"token": token})
 }
 
-// --- WebSocket handler ---
+// --- WebSocket handler Fiber (port 8083) ---
+
+// FiberTerminalHandler gère les connexions WebSocket terminal via Fiber.
+// URL : /ws/terminal/:id?token=xxx
+func FiberTerminalHandler(c *fiberws.Conn) {
+	id, err := strconv.ParseInt(c.Params("id"), 10, 64)
+	if err != nil {
+		c.WriteMessage(fiberws.TextMessage, []byte("ID invalide")) //nolint:errcheck
+		return
+	}
+
+	token := c.Query("token")
+	if token == "" {
+		c.WriteMessage(fiberws.TextMessage, []byte("Token manquant")) //nolint:errcheck
+		return
+	}
+
+	tokenMu.Lock()
+	entry, ok := tokenStore[token]
+	if ok {
+		delete(tokenStore, token) // usage unique
+	}
+	tokenMu.Unlock()
+
+	if !ok || time.Now().After(entry.expiresAt) || entry.vpsID != id {
+		c.WriteMessage(fiberws.TextMessage, []byte("Token invalide ou expiré")) //nolint:errcheck
+		return
+	}
+
+	vps, err := db.GetVPSByID(id)
+	if err != nil || vps == nil {
+		c.WriteMessage(fiberws.TextMessage, []byte("VPS introuvable")) //nolint:errcheck
+		return
+	}
+	if vps.Status != "running" {
+		c.WriteMessage(fiberws.TextMessage, []byte("VPS non démarré")) //nolint:errcheck
+		return
+	}
+
+	containerName := fmt.Sprintf("vps-%d", id)
+	log.Printf("Terminal: connexion ouverte pour %s", containerName)
+
+	stdinR, stdinW := io.Pipe()
+	stdoutR, stdoutW := io.Pipe()
+
+	execDone := make(chan struct{})
+	go func() {
+		defer close(execDone)
+		if err := lxd.ExecInteractive(containerName, stdinR, stdoutW, 220, 50); err != nil {
+			log.Printf("Terminal: exec terminé pour %s: %v", containerName, err)
+			errMsg := fmt.Sprintf("\r\n\x1b[31m[Erreur LXD: %v]\x1b[0m\r\n", err)
+			stdoutW.Write([]byte(errMsg)) //nolint:errcheck
+		}
+		stdoutW.Close()
+	}()
+
+	readerDone := make(chan struct{})
+	go func() {
+		defer close(readerDone)
+		buf := make([]byte, 4096)
+		for {
+			n, err := stdoutR.Read(buf)
+			if n > 0 {
+				if werr := c.WriteMessage(fiberws.BinaryMessage, buf[:n]); werr != nil {
+					break
+				}
+			}
+			if err != nil {
+				break
+			}
+		}
+	}()
+
+	for {
+		_, msg, err := c.ReadMessage()
+		if err != nil {
+			break
+		}
+		if _, err := stdinW.Write(msg); err != nil {
+			break
+		}
+	}
+
+	stdinW.Close()
+	<-execDone
+	<-readerDone
+
+	log.Printf("Terminal: connexion fermée pour %s", containerName)
+}
+
+// --- WebSocket handler net/http (port 80, subdomain proxy) ---
 
 var wsUpgrader = websocket.Upgrader{
 	ReadBufferSize:  4096,
@@ -89,10 +180,8 @@ var wsUpgrader = websocket.Upgrader{
 }
 
 // TerminalHandler gère les connexions WebSocket vers le terminal d'un VPS.
-// URL : /terminal/{id}?token=xxx
-// Le token est à usage unique et expire après 60s.
+// URL : /terminal/{id}?token=xxx (port 80, via StartSubdomainProxy)
 func TerminalHandler(w http.ResponseWriter, r *http.Request) {
-	// Extraire l'ID depuis l'URL : /terminal/123
 	pathParts := strings.Split(strings.TrimPrefix(r.URL.Path, "/ws/terminal/"), "/")
 	if len(pathParts) == 0 || pathParts[0] == "" {
 		http.Error(w, "ID manquant", http.StatusBadRequest)
@@ -104,7 +193,6 @@ func TerminalHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Valider le token à usage unique
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		http.Error(w, "Token manquant", http.StatusUnauthorized)
@@ -114,7 +202,7 @@ func TerminalHandler(w http.ResponseWriter, r *http.Request) {
 	tokenMu.Lock()
 	entry, ok := tokenStore[token]
 	if ok {
-		delete(tokenStore, token) // consommé immédiatement (usage unique)
+		delete(tokenStore, token)
 	}
 	tokenMu.Unlock()
 
@@ -135,12 +223,6 @@ func TerminalHandler(w http.ResponseWriter, r *http.Request) {
 
 	containerName := fmt.Sprintf("vps-%d", id)
 
-	// Log des headers reçus pour diagnostiquer Cloudflare
-	log.Printf("Terminal: tentative upgrade vps-%d | Connection=%q | Upgrade=%q",
-		id, r.Header.Get("Connection"), r.Header.Get("Upgrade"))
-
-	// Cloudflare (et autres proxies) retirent le header hop-by-hop "Connection".
-	// Gorilla/websocket exige "Connection: upgrade" — on le restaure si absent.
 	if r.Header.Get("Connection") == "" {
 		r.Header.Set("Connection", "upgrade")
 	}
@@ -148,7 +230,6 @@ func TerminalHandler(w http.ResponseWriter, r *http.Request) {
 		r.Header.Set("Upgrade", "websocket")
 	}
 
-	// Upgrade HTTP → WebSocket
 	ws, err := wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("Terminal: erreur upgrade WebSocket pour vps-%d: %v", id, err)
@@ -156,7 +237,7 @@ func TerminalHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ws.Close()
 
-	log.Printf("Terminal: connexion ouverte pour %s", containerName)
+	log.Printf("Terminal: connexion ouverte (port 80) pour %s", containerName)
 
 	stdinR, stdinW := io.Pipe()
 	stdoutR, stdoutW := io.Pipe()
@@ -165,8 +246,6 @@ func TerminalHandler(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer close(execDone)
 		if err := lxd.ExecInteractive(containerName, stdinR, stdoutW, 220, 50); err != nil {
-			log.Printf("Terminal: exec terminé pour %s: %v", containerName, err)
-			// Afficher l'erreur dans le terminal avant fermeture
 			errMsg := fmt.Sprintf("\r\n\x1b[31m[Erreur LXD: %v]\x1b[0m\r\n", err)
 			stdoutW.Write([]byte(errMsg)) //nolint:errcheck
 		}
@@ -205,5 +284,5 @@ func TerminalHandler(w http.ResponseWriter, r *http.Request) {
 	<-execDone
 	<-readerDone
 
-	log.Printf("Terminal: connexion fermée pour %s", containerName)
+	log.Printf("Terminal: connexion fermée (port 80) pour %s", containerName)
 }

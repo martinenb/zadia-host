@@ -9,6 +9,7 @@ COPY go.mod ./
 RUN go mod download
 RUN go get github.com/canonical/lxd/client@latest
 RUN go get github.com/gorilla/websocket@latest
+RUN go get github.com/gofiber/contrib/websocket@latest
 
 COPY . .
 RUN go mod tidy

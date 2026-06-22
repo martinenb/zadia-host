@@ -91,10 +91,10 @@ export default function VPSTerminal({ vpsId, status }: VPSTerminalProps) {
       termRef.current = term
       fitRef.current = fit
 
-      // 3. Connexion WebSocket via port 80 (nginx proxie /ws/ → backend:8085)
+      // 3. Connexion WebSocket directe vers le backend (port 8083)
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
       const hostname = window.location.hostname
-      const ws = new WebSocket(`${proto}//${hostname}/ws/terminal/${vpsId}?token=${token}`)
+      const ws = new WebSocket(`${proto}//${hostname}:8083/ws/terminal/${vpsId}?token=${token}`)
       ws.binaryType = "arraybuffer"
       wsRef.current = ws
 
@@ -118,7 +118,7 @@ export default function VPSTerminal({ vpsId, status }: VPSTerminalProps) {
 
       ws.onerror = () => {
         setTermState("error")
-        setErrorMsg("Impossible de se connecter au serveur terminal (port 8085).")
+        setErrorMsg("Impossible de se connecter au serveur terminal.")
       }
 
       term.onData((data) => {
