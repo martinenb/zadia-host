@@ -2,7 +2,6 @@ package lxd
 
 import (
 	"fmt"
-	"io"
 	"strings"
 	"time"
 
@@ -109,7 +108,7 @@ func DeleteContainer(name string) error {
 		return fmt.Errorf("connexion LXD: %w", err)
 	}
 
-	op, err := client.DeleteInstance(name)
+	op, err := client.DeleteInstance(name, false)
 	if err != nil {
 		return fmt.Errorf("suppression instance: %w", err)
 	}
@@ -177,7 +176,7 @@ func PushFile(containerName, destPath, content string) error {
 	}
 
 	args := lxdclient.InstanceFileArgs{
-		Content:   io.NopCloser(strings.NewReader(content)),
+		Content:   strings.NewReader(content),
 		UID:       0,
 		GID:       0,
 		Mode:      0644,
