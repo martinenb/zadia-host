@@ -74,9 +74,15 @@ func CreateVPS(c *fiber.Ctx) error {
 		return c.Status(409).JSON(fiber.Map{"error": fmt.Sprintf("Le sous-domaine '%s' est déjà utilisé", subdomain)})
 	}
 
+	vpsType := req.Type
+	if vpsType != "web" {
+		vpsType = "vps"
+	}
+
 	vps := &models.VPS{
 		Name:      req.Name,
 		Subdomain: subdomain,
+		Type:      vpsType,
 		OS:        req.OS,
 		VCores:    req.VCores,
 		RAMGB:     req.RAMGB,

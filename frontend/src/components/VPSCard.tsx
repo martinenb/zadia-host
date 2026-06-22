@@ -10,6 +10,7 @@ interface VPS {
   id: number
   name: string
   subdomain: string
+  type: string
   os: string
   vcores: number
   ram_gb: number

@@ -4,6 +4,7 @@ type VPS struct {
 	ID           int64  `json:"id"`
 	Name         string `json:"name"`
 	Subdomain    string `json:"subdomain"`
+	Type         string `json:"type"` // "vps" ou "web"
 	OS           string `json:"os"`
 	VCores       int    `json:"vcores"`
 	RAMGB        int    `json:"ram_gb"`
@@ -20,6 +21,7 @@ type VPS struct {
 
 type CreateVPSRequest struct {
 	Name   string `json:"name"`
+	Type   string `json:"type"`
 	OS     string `json:"os"`
 	VCores int    `json:"vcores"`
 	RAMGB  int    `json:"ram_gb"`

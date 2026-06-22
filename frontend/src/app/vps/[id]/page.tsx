@@ -14,6 +14,7 @@ interface VPS {
   id: number
   name: string
   subdomain: string
+  type: string
   os: string
   vcores: number
   ram_gb: number
@@ -33,6 +34,109 @@ function StatusBadge({ status }: { status: string }) {
   if (status === "stopped") return <Badge variant="error">Arrêté</Badge>
   if (status === "creating") return <Badge variant="warning">Création...</Badge>
   return <Badge variant="outline">{status}</Badge>
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+      className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-muted"
+    >
+      {copied ? "Copié ✓" : "Copier"}
+    </button>
+  )
+}
+
+function SSHMainCard({
+  vpsId, sshPort, sshPassword, status, actionLoading, setActionLoading, fetchVPS
+}: {
+  vpsId: string
+  sshPort: number
+  sshPassword: string
+  status: string
+  actionLoading: string
+  setActionLoading: (s: string) => void
+  fetchVPS: () => void
+}) {
+  const [passVisible, setPassVisible] = useState(false)
+  const sshCmd = `ssh root@host.mcmr.eu -p ${sshPort}`
+
+  if (sshPort === 0) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-6 flex flex-col items-center gap-4 text-center">
+        {status === "creating" ? (
+          <>
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <div>
+              <p className="text-sm font-medium">Provisionnement en cours...</p>
+              <p className="text-xs text-muted-foreground mt-1">SSH sera configuré automatiquement. Patiente ~2 minutes.</p>
+            </div>
+          </>
+        ) : (
+          <>
+            <Terminal className="h-6 w-6 text-muted-foreground" />
+            <div>
+              <p className="text-sm font-medium">SSH non configuré</p>
+              <p className="text-xs text-muted-foreground mt-1">Clique pour configurer l&apos;accès SSH sur ce VPS.</p>
+            </div>
+            {status === "running" && (
+              <Button
+                size="sm"
+                disabled={actionLoading === "ssh"}
+                onClick={async () => {
+                  setActionLoading("ssh")
+                  await fetch(`/api/vps/${vpsId}/setup-ssh`, { method: "POST" })
+                  setTimeout(() => { fetchVPS(); setActionLoading("") }, 35000)
+                  fetchVPS()
+                }}
+              >
+                {actionLoading === "ssh"
+                  ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Configuration en cours (~30s)...</>
+                  : <><Terminal className="h-3 w-3 mr-1.5" />Configurer SSH</>
+                }
+              </Button>
+            )}
+          </>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-6 space-y-4">
+      <div className="flex items-center gap-2">
+        <div className="h-2 w-2 rounded-full bg-green-400" />
+        <p className="text-sm font-medium">Votre VPS est prêt — connectez-vous en SSH</p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <p className="text-xs text-muted-foreground mb-1.5">Commande de connexion</p>
+          <div className="flex items-center gap-2 bg-background border border-border rounded-md px-3 py-2">
+            <code className="text-sm font-mono flex-1 select-all">{sshCmd}</code>
+            <CopyButton text={sshCmd} />
+          </div>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground mb-1.5">Mot de passe root</p>
+          <div className="flex items-center gap-2 bg-background border border-border rounded-md px-3 py-2">
+            <code className="text-sm font-mono flex-1 select-all tracking-wider">
+              {passVisible ? sshPassword : "••••••••••••••"}
+            </code>
+            <button
+              type="button"
+              onClick={() => setPassVisible(!passVisible)}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-muted"
+            >
+              {passVisible ? "Masquer" : "Afficher"}
+            </button>
+            {passVisible && <CopyButton text={sshPassword} />}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function SSHPassword({ password }: { password: string }) {
@@ -167,6 +271,19 @@ export default function VPSDetailPage() {
         </div>
       </div>
 
+      {/* Mode VPS : SSH en premier plan */}
+      {vps.type === "vps" && (
+        <SSHMainCard
+          vpsId={id}
+          sshPort={vps.ssh_port}
+          sshPassword={vps.ssh_password}
+          status={vps.status}
+          actionLoading={actionLoading}
+          setActionLoading={setActionLoading}
+          fetchVPS={fetchVPS}
+        />
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Colonne gauche */}
         <div className="space-y-6">
@@ -272,17 +389,24 @@ export default function VPSDetailPage() {
           </Card>
         </div>
 
-        {/* Déploiement - colonne droite (2/3) */}
+        {/* Colonne droite */}
         <div className="lg:col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-medium">Déploiement ZIP</CardTitle>
+              <CardTitle className="text-sm font-medium">
+                {vps.type === "vps" ? "Variables d'environnement" : "Déploiement ZIP"}
+              </CardTitle>
               <CardDescription className="text-xs">
-                Déposez votre projet en ZIP — détection automatique du framework
+                {vps.type === "vps"
+                  ? "Injectées dans les sessions SSH via /etc/environment"
+                  : "Déposez votre projet en ZIP — détection automatique du framework"
+                }
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {vps.status === "running" ? (
+              {vps.type === "vps" ? (
+                <EnvVarsSection vpsId={vps.id} />
+              ) : vps.status === "running" ? (
                 <DeploySection
                   vpsId={vps.id}
                   subdomain={vps.subdomain}

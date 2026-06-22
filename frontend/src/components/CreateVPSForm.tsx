@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2 } from "lucide-react"
+import { Loader2, Terminal, Globe } from "lucide-react"
 
 interface CreateVPSFormProps {
   onSuccess: () => void
@@ -17,6 +17,7 @@ export default function CreateVPSForm({ onSuccess, onCancel }: CreateVPSFormProp
   const [error, setError] = useState("")
   const [form, setForm] = useState({
     name: "",
+    type: "vps",
     os: "ubuntu",
     vcores: 1,
     ram_gb: 1,
@@ -47,20 +48,69 @@ export default function CreateVPSForm({ onSuccess, onCancel }: CreateVPSFormProp
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-5">
+      {/* Sélecteur de type */}
       <div className="space-y-2">
-        <Label htmlFor="name">Nom du VPS</Label>
+        <Label>Type d&apos;utilisation</Label>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setForm(f => ({ ...f, type: "vps" }))}
+            className={`flex flex-col items-start gap-2 p-4 rounded-lg border-2 text-left transition-colors ${
+              form.type === "vps"
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-border/80"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Terminal className="h-4 w-4" />
+              <span className="text-sm font-medium">VPS</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Accès SSH root complet. Fais ce que tu veux.
+            </p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setForm(f => ({ ...f, type: "web" }))}
+            className={`flex flex-col items-start gap-2 p-4 rounded-lg border-2 text-left transition-colors ${
+              form.type === "web"
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-border/80"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Globe className="h-4 w-4" />
+              <span className="text-sm font-medium">Hébergement web</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Upload ZIP → déploiement auto. URL dédiée.
+            </p>
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="name">{form.type === "vps" ? "Nom du VPS" : "Nom du projet"}</Label>
         <Input
           id="name"
-          placeholder="mon-serveur-01"
+          placeholder={form.type === "vps" ? "mon-serveur" : "mon-site"}
           value={form.name}
           onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
           required
         />
+        {form.name && (
+          <p className="text-xs text-muted-foreground">
+            {form.type === "web"
+              ? `→ Accessible sur ${form.name.toLowerCase().replace(/[^a-z0-9]/g, "-")}.host.mcmr.eu`
+              : `→ Conteneur : vps-{id}`
+            }
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">
-        <Label>Système d'exploitation</Label>
+        <Label>Système d&apos;exploitation</Label>
         <Select value={form.os} onValueChange={v => setForm(f => ({ ...f, os: v }))}>
           <SelectTrigger>
             <SelectValue />
@@ -115,10 +165,13 @@ export default function CreateVPSForm({ onSuccess, onCancel }: CreateVPSFormProp
         </p>
       )}
 
-      <div className="flex gap-3 pt-2">
+      <div className="flex gap-3 pt-1">
         <Button type="submit" disabled={loading} className="flex-1">
           {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {loading ? "Création en cours..." : "Créer le VPS"}
+          {loading
+            ? "Création en cours..."
+            : form.type === "vps" ? "Créer le VPS" : "Créer l'hébergement"
+          }
         </Button>
         <Button type="button" variant="outline" onClick={onCancel}>
           Annuler

@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS vps (
     id            SERIAL PRIMARY KEY,
     name          VARCHAR(255) NOT NULL,
     subdomain     VARCHAR(255) NOT NULL DEFAULT '',
+    type          VARCHAR(20) DEFAULT 'vps',
     os            VARCHAR(100) NOT NULL,
     vcores        INT NOT NULL,
     ram_gb        INT NOT NULL,
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS vps (
 	// Migrations: ajouter les colonnes si elles n'existent pas (tables existantes)
 	migrations := []string{
 		`ALTER TABLE vps ADD COLUMN IF NOT EXISTS subdomain VARCHAR(255) NOT NULL DEFAULT '';`,
+		`ALTER TABLE vps ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'vps';`,
 		`ALTER TABLE vps ADD COLUMN IF NOT EXISTS ssh_port INT DEFAULT 0;`,
 		`ALTER TABLE vps ADD COLUMN IF NOT EXISTS ssh_password VARCHAR(255) DEFAULT '';`,
 		`ALTER TABLE vps ADD COLUMN IF NOT EXISTS deploy_status VARCHAR(50) DEFAULT '';`,
@@ -74,7 +76,7 @@ CREATE TABLE IF NOT EXISTS vps (
 }
 
 func GetAllVPS() ([]models.VPS, error) {
-	rows, err := DB.Query(`SELECT id, name, subdomain, os, vcores, ram_gb, disk_gb, status, ip, host_port, ssh_port, ssh_password, deploy_status, app_port, created_at FROM vps ORDER BY id DESC`)
+	rows, err := DB.Query(`SELECT id, name, subdomain, type, os, vcores, ram_gb, disk_gb, status, ip, host_port, ssh_port, ssh_password, deploy_status, app_port, created_at FROM vps ORDER BY id DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("requête GetAllVPS: %w", err)
 	}
@@ -83,7 +85,7 @@ func GetAllVPS() ([]models.VPS, error) {
 	var list []models.VPS
 	for rows.Next() {
 		var v models.VPS
-		if err := rows.Scan(&v.ID, &v.Name, &v.Subdomain, &v.OS, &v.VCores, &v.RAMGB, &v.DiskGB, &v.Status, &v.IP, &v.HostPort, &v.SSHPort, &v.SSHPassword, &v.DeployStatus, &v.AppPort, &v.CreatedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.Name, &v.Subdomain, &v.Type, &v.OS, &v.VCores, &v.RAMGB, &v.DiskGB, &v.Status, &v.IP, &v.HostPort, &v.SSHPort, &v.SSHPassword, &v.DeployStatus, &v.AppPort, &v.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan VPS: %w", err)
 		}
 		list = append(list, v)
@@ -93,8 +95,8 @@ func GetAllVPS() ([]models.VPS, error) {
 
 func GetVPSByID(id int64) (*models.VPS, error) {
 	var v models.VPS
-	row := DB.QueryRow(`SELECT id, name, subdomain, os, vcores, ram_gb, disk_gb, status, ip, host_port, ssh_port, ssh_password, deploy_status, app_port, created_at FROM vps WHERE id = $1`, id)
-	if err := row.Scan(&v.ID, &v.Name, &v.Subdomain, &v.OS, &v.VCores, &v.RAMGB, &v.DiskGB, &v.Status, &v.IP, &v.HostPort, &v.SSHPort, &v.SSHPassword, &v.DeployStatus, &v.AppPort, &v.CreatedAt); err != nil {
+	row := DB.QueryRow(`SELECT id, name, subdomain, type, os, vcores, ram_gb, disk_gb, status, ip, host_port, ssh_port, ssh_password, deploy_status, app_port, created_at FROM vps WHERE id = $1`, id)
+	if err := row.Scan(&v.ID, &v.Name, &v.Subdomain, &v.Type, &v.OS, &v.VCores, &v.RAMGB, &v.DiskGB, &v.Status, &v.IP, &v.HostPort, &v.SSHPort, &v.SSHPassword, &v.DeployStatus, &v.AppPort, &v.CreatedAt); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("VPS %d introuvable", id)
 		}
@@ -105,8 +107,8 @@ func GetVPSByID(id int64) (*models.VPS, error) {
 
 func GetVPSBySubdomain(subdomain string) (*models.VPS, error) {
 	var v models.VPS
-	row := DB.QueryRow(`SELECT id, name, subdomain, os, vcores, ram_gb, disk_gb, status, ip, host_port, ssh_port, ssh_password, deploy_status, app_port, created_at FROM vps WHERE subdomain = $1`, subdomain)
-	if err := row.Scan(&v.ID, &v.Name, &v.Subdomain, &v.OS, &v.VCores, &v.RAMGB, &v.DiskGB, &v.Status, &v.IP, &v.HostPort, &v.SSHPort, &v.SSHPassword, &v.DeployStatus, &v.AppPort, &v.CreatedAt); err != nil {
+	row := DB.QueryRow(`SELECT id, name, subdomain, type, os, vcores, ram_gb, disk_gb, status, ip, host_port, ssh_port, ssh_password, deploy_status, app_port, created_at FROM vps WHERE subdomain = $1`, subdomain)
+	if err := row.Scan(&v.ID, &v.Name, &v.Subdomain, &v.Type, &v.OS, &v.VCores, &v.RAMGB, &v.DiskGB, &v.Status, &v.IP, &v.HostPort, &v.SSHPort, &v.SSHPassword, &v.DeployStatus, &v.AppPort, &v.CreatedAt); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
@@ -127,8 +129,8 @@ func SubdomainExists(subdomain string) bool {
 func CreateVPS(vps *models.VPS) (int64, error) {
 	var id int64
 	err := DB.QueryRow(
-		`INSERT INTO vps (name, subdomain, os, vcores, ram_gb, disk_gb, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-		vps.Name, vps.Subdomain, vps.OS, vps.VCores, vps.RAMGB, vps.DiskGB, vps.Status,
+		`INSERT INTO vps (name, subdomain, type, os, vcores, ram_gb, disk_gb, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+		vps.Name, vps.Subdomain, vps.Type, vps.OS, vps.VCores, vps.RAMGB, vps.DiskGB, vps.Status,
 	).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert VPS: %w", err)
