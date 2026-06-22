@@ -91,11 +91,10 @@ export default function VPSTerminal({ vpsId, status }: VPSTerminalProps) {
       termRef.current = term
       fitRef.current = fit
 
-      // 3. Connexion WebSocket directement sur port 8083 (API, déjà ouvert)
-      // Next.js ne proxie pas les upgrades WebSocket → on bypass le frontend
+      // 3. Connexion WebSocket sur port 8085 (dédié terminal, ouvert dans Ionos)
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
       const hostname = window.location.hostname
-      const ws = new WebSocket(`${proto}//${hostname}:8083/ws/terminal/${vpsId}?token=${token}`)
+      const ws = new WebSocket(`${proto}//${hostname}:8085/ws/terminal/${vpsId}?token=${token}`)
       ws.binaryType = "arraybuffer"
       wsRef.current = ws
 

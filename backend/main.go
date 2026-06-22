@@ -3,8 +3,6 @@ package main
 import (
 	"log"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
 	"os"
 
 	"github.com/gofiber/fiber/v2"
@@ -30,6 +28,16 @@ func main() {
 		proxyPort = "80"
 	}
 	go handlers.StartSubdomainProxy(proxyPort)
+
+	// Serveur WebSocket terminal sur port 8085
+	go func() {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/ws/terminal/", handlers.TerminalHandler)
+		log.Println("Terminal WebSocket démarré sur le port 8085")
+		if err := http.ListenAndServe(":8085", mux); err != nil {
+			log.Printf("Erreur serveur terminal: %v", err)
+		}
+	}()
 
 	app := fiber.New(fiber.Config{
 		BodyLimit: 200 * 1024 * 1024,
@@ -60,30 +68,11 @@ func main() {
 	api.Post("/vps/:id/env", handlers.CreateEnvVar)
 	api.Delete("/vps/:id/env/:envId", handlers.DeleteEnvVar)
 
-	// Fiber tourne sur un port interne non exposé (8084).
-	// Le mux net/http public (port 8083) route :
-	//   /ws/terminal/* → gorilla/websocket (WebSocket natif)
-	//   tout le reste   → Fiber via reverse proxy localhost
-	go func() {
-		if err := app.Listen(":8084"); err != nil {
-			log.Fatalf("Erreur Fiber: %v", err)
-		}
-	}()
-
-	fiberProxy := httputil.NewSingleHostReverseProxy(&url.URL{
-		Scheme: "http",
-		Host:   "localhost:8084",
-	})
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/ws/terminal/", handlers.TerminalHandler)
-	mux.Handle("/", fiberProxy)
-
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	log.Printf("Serveur Zadia Host démarré sur le port %s (API + WebSocket terminal)", port)
-	log.Fatal(http.ListenAndServe(":"+port, mux))
+	log.Printf("Serveur Zadia Host démarré sur le port %s", port)
+	log.Fatal(app.Listen(":" + port))
 }
