@@ -153,6 +153,9 @@ func TerminalHandler(w http.ResponseWriter, r *http.Request) {
 		defer close(execDone)
 		if err := lxd.ExecInteractive(containerName, stdinR, stdoutW, 220, 50); err != nil {
 			log.Printf("Terminal: exec terminé pour %s: %v", containerName, err)
+			// Afficher l'erreur dans le terminal avant fermeture
+			errMsg := fmt.Sprintf("\r\n\x1b[31m[Erreur LXD: %v]\x1b[0m\r\n", err)
+			stdoutW.Write([]byte(errMsg)) //nolint:errcheck
 		}
 		stdoutW.Close()
 	}()
