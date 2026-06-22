@@ -27,7 +27,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://zadia:zadia@postgres:5432/zadiahost?sslmode=disable
+      DATABASE_URL: postgres://zadia:zadia@localhost:5432/zadiahost?sslmode=disable
       PORT: 8080
       PROXY_PORT: "9090"
     ports:
