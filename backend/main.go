@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"net/http"
 	"os"
 
 	"github.com/gofiber/fiber/v2"
@@ -29,17 +28,7 @@ func main() {
 	}
 	go handlers.StartSubdomainProxy(proxyPort)
 
-	// Serveur WebSocket terminal sur port 8085
-	go func() {
-		mux := http.NewServeMux()
-		mux.HandleFunc("/ws/terminal/", handlers.TerminalHandler)
-		log.Println("Terminal WebSocket démarré sur le port 8085")
-		if err := http.ListenAndServe(":8085", mux); err != nil {
-			log.Printf("Erreur serveur terminal: %v", err)
-		}
-	}()
-
-	app := fiber.New(fiber.Config{
+app := fiber.New(fiber.Config{
 		BodyLimit: 200 * 1024 * 1024,
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})

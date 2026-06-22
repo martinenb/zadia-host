@@ -13,6 +13,8 @@ import (
 
 func StartSubdomainProxy(port string) {
 	mux := http.NewServeMux()
+	// /ws/terminal/ est routé en priorité vers le handler WebSocket du terminal
+	mux.HandleFunc("/ws/terminal/", TerminalHandler)
 	mux.HandleFunc("/", handleSubdomainProxy)
 	log.Printf("Proxy sous-domaines démarré sur le port %s", port)
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
