@@ -1,0 +1,39 @@
+# Go
+backend/zadia-backend
+backend/*.exe
+backend/vendor/
+*.test
+
+# Node.js / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+frontend/.env*.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# Environnement
+.env
+.env.local
+.env.*.local
+
+# Base de données
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Docker
+.dockerignore
