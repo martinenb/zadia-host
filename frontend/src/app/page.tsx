@@ -10,6 +10,7 @@ import { Plus, Server, RefreshCw } from "lucide-react"
 interface VPS {
   id: number
   name: string
+  subdomain: string
   os: string
   vcores: number
   ram_gb: number
@@ -17,6 +18,10 @@ interface VPS {
   status: string
   ip: string
   host_port: number
+  ssh_port: number
+  ssh_password: string
+  deploy_status: string
+  app_port: number
   created_at: string
 }
 
