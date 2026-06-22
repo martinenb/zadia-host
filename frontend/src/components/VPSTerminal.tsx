@@ -16,12 +16,14 @@ export default function VPSTerminal({ vpsId, status }: VPSTerminalProps) {
   const termRef = useRef<import("@xterm/xterm").Terminal | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const fitRef = useRef<import("@xterm/addon-fit").FitAddon | null>(null)
+  const roRef = useRef<ResizeObserver | null>(null)
   const [termState, setTermState] = useState<TerminalState>("idle")
   const [errorMsg, setErrorMsg] = useState("")
 
   // Nettoyage à la fermeture du composant
   useEffect(() => {
     return () => {
+      roRef.current?.disconnect()
       wsRef.current?.close()
       termRef.current?.dispose()
     }
@@ -123,9 +125,10 @@ export default function VPSTerminal({ vpsId, status }: VPSTerminalProps) {
       })
 
       // Redimensionnement auto
+      roRef.current?.disconnect()
       const ro = new ResizeObserver(() => fitRef.current?.fit())
       if (containerRef.current) ro.observe(containerRef.current)
-      term.onDispose(() => ro.disconnect())
+      roRef.current = ro
 
     } catch (err) {
       setTermState("error")
@@ -134,6 +137,8 @@ export default function VPSTerminal({ vpsId, status }: VPSTerminalProps) {
   }
 
   const reconnect = () => {
+    roRef.current?.disconnect()
+    roRef.current = null
     termRef.current?.dispose()
     termRef.current = null
     wsRef.current?.close()
