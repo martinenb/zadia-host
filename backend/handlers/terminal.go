@@ -93,7 +93,7 @@ var wsUpgrader = websocket.Upgrader{
 // Le token est à usage unique et expire après 60s.
 func TerminalHandler(w http.ResponseWriter, r *http.Request) {
 	// Extraire l'ID depuis l'URL : /terminal/123
-	pathParts := strings.Split(strings.TrimPrefix(r.URL.Path, "/terminal/"), "/")
+	pathParts := strings.Split(strings.TrimPrefix(r.URL.Path, "/ws/terminal/"), "/")
 	if len(pathParts) == 0 || pathParts[0] == "" {
 		http.Error(w, "ID manquant", http.StatusBadRequest)
 		return

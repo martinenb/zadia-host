@@ -8,12 +8,12 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/valyala/fasthttp/fasthttpadaptor"
 	"zadia-host/db"
 	"zadia-host/handlers"
 )
 
 func main() {
-	// Connexion PostgreSQL
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		dbURL = "postgres://zadia:zadia@localhost:5432/zadiahost?sslmode=disable"
@@ -24,29 +24,14 @@ func main() {
 	}
 	log.Println("Base de données PostgreSQL connectée")
 
-	// Démarrer le proxy sous-domaines en arrière-plan
 	proxyPort := os.Getenv("PROXY_PORT")
 	if proxyPort == "" {
 		proxyPort = "80"
 	}
 	go handlers.StartSubdomainProxy(proxyPort)
 
-	// Démarrer le serveur WebSocket terminal de recovery sur port 8085
-	terminalPort := os.Getenv("TERMINAL_PORT")
-	if terminalPort == "" {
-		terminalPort = "8085"
-	}
-	go func() {
-		mux := http.NewServeMux()
-		mux.HandleFunc("/terminal/", handlers.TerminalHandler)
-		log.Printf("Terminal WebSocket démarré sur le port %s", terminalPort)
-		if err := http.ListenAndServe(":"+terminalPort, mux); err != nil {
-			log.Printf("Erreur serveur terminal: %v", err)
-		}
-	}()
-
 	app := fiber.New(fiber.Config{
-		BodyLimit: 200 * 1024 * 1024, // 200 MB
+		BodyLimit: 200 * 1024 * 1024,
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		},
@@ -54,14 +39,13 @@ func main() {
 
 	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "http://localhost:3000",
+		AllowOrigins: "*",
 		AllowHeaders: "Origin, Content-Type, Accept",
 		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
 	}))
 
 	api := app.Group("/api")
 
-	// Routes VPS
 	api.Get("/vps", handlers.GetAllVPS)
 	api.Post("/vps", handlers.CreateVPS)
 	api.Get("/vps/:id", handlers.GetVPS)
@@ -72,16 +56,22 @@ func main() {
 	api.Post("/vps/:id/deploy", handlers.DeployProject)
 	api.Post("/vps/:id/terminal-token", handlers.CreateTerminalToken)
 
-	// Routes Variables d'environnement
 	api.Get("/vps/:id/env", handlers.GetEnvVars)
 	api.Post("/vps/:id/env", handlers.CreateEnvVar)
 	api.Delete("/vps/:id/env/:envId", handlers.DeleteEnvVar)
+
+	// Mux principal : WebSocket sur /ws/terminal/, tout le reste → Fiber
+	// Permet d'avoir gorilla/websocket et Fiber sur le même port (8083)
+	// sans ouvrir de port supplémentaire.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ws/terminal/", handlers.TerminalHandler)
+	mux.Handle("/", fasthttpadaptor.NewFastHTTPHandler(app.Handler()))
 
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	log.Printf("Serveur Zadia Host démarré sur le port %s", port)
-	log.Fatal(app.Listen(":" + port))
+	log.Printf("Serveur Zadia Host démarré sur le port %s (API + WebSocket terminal)", port)
+	log.Fatal(http.ListenAndServe(":"+port, mux))
 }

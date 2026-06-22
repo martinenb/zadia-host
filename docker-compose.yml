@@ -29,11 +29,9 @@ services:
       DATABASE_URL: postgres://zadia:zadia@postgres:5432/zadiahost?sslmode=disable
       PORT: 8083
       PROXY_PORT: "80"
-      TERMINAL_PORT: "8085"
     ports:
       - "8083:8083"
       - "80:80"
-      - "8085:8085"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

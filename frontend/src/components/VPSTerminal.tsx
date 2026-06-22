@@ -92,8 +92,10 @@ export default function VPSTerminal({ vpsId, status }: VPSTerminalProps) {
       fitRef.current = fit
 
       // 3. Connexion WebSocket avec le token (usage unique, expire en 60s)
-      const host = window.location.hostname
-      const ws = new WebSocket(`ws://${host}:8085/terminal/${vpsId}?token=${token}`)
+      // Passe par le même domaine/port que le panel — aucun port supplémentaire requis
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
+      const host = window.location.host
+      const ws = new WebSocket(`${proto}//${host}/ws/terminal/${vpsId}?token=${token}`)
       ws.binaryType = "arraybuffer"
       wsRef.current = ws
 
