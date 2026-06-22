@@ -91,11 +91,11 @@ export default function VPSTerminal({ vpsId, status }: VPSTerminalProps) {
       termRef.current = term
       fitRef.current = fit
 
-      // 3. Connexion WebSocket avec le token (usage unique, expire en 60s)
-      // Passe par le même domaine/port que le panel — aucun port supplémentaire requis
+      // 3. Connexion WebSocket directement sur port 8083 (API, déjà ouvert)
+      // Next.js ne proxie pas les upgrades WebSocket → on bypass le frontend
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
-      const host = window.location.host
-      const ws = new WebSocket(`${proto}//${host}/ws/terminal/${vpsId}?token=${token}`)
+      const hostname = window.location.hostname
+      const ws = new WebSocket(`${proto}//${hostname}:8083/ws/terminal/${vpsId}?token=${token}`)
       ws.binaryType = "arraybuffer"
       wsRef.current = ws
 
