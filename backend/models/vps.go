@@ -1,16 +1,21 @@
 package models
 
 type VPS struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	OS        string `json:"os"`
-	VCores    int    `json:"vcores"`
-	RAMGB     int    `json:"ram_gb"`
-	DiskGB    int    `json:"disk_gb"`
-	Status    string `json:"status"`
-	IP        string `json:"ip"`
-	HostPort  int    `json:"host_port"`
-	CreatedAt string `json:"created_at"`
+	ID           int64  `json:"id"`
+	Name         string `json:"name"`
+	Subdomain    string `json:"subdomain"`
+	OS           string `json:"os"`
+	VCores       int    `json:"vcores"`
+	RAMGB        int    `json:"ram_gb"`
+	DiskGB       int    `json:"disk_gb"`
+	Status       string `json:"status"`
+	IP           string `json:"ip"`
+	HostPort     int    `json:"host_port"`
+	SSHPort      int    `json:"ssh_port"`
+	SSHPassword  string `json:"ssh_password"`
+	DeployStatus string `json:"deploy_status"`
+	AppPort      int    `json:"app_port"`
+	CreatedAt    string `json:"created_at"`
 }
 
 type CreateVPSRequest struct {

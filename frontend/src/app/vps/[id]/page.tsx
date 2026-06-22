@@ -13,6 +13,7 @@ import { ArrowLeft, Play, Square, Trash2, Cpu, HardDrive, MemoryStick, ExternalL
 interface VPS {
   id: number
   name: string
+  subdomain: string
   os: string
   vcores: number
   ram_gb: number
@@ -20,6 +21,10 @@ interface VPS {
   status: string
   ip: string
   host_port: number
+  ssh_port: number
+  ssh_password: string
+  deploy_status: string
+  app_port: number
   created_at: string
 }
 
@@ -28,6 +33,20 @@ function StatusBadge({ status }: { status: string }) {
   if (status === "stopped") return <Badge variant="error">Arrêté</Badge>
   if (status === "creating") return <Badge variant="warning">Création...</Badge>
   return <Badge variant="outline">{status}</Badge>
+}
+
+function SSHPassword({ password }: { password: string }) {
+  const [visible, setVisible] = useState(false)
+  return (
+    <div className="flex items-center gap-2">
+      <code className="text-xs bg-muted px-2 py-1.5 rounded font-mono flex-1 select-all">
+        {visible ? password : "••••••••••••••"}
+      </code>
+      <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setVisible(!visible)}>
+        {visible ? "Masquer" : "Afficher"}
+      </Button>
+    </div>
+  )
 }
 
 export default function VPSDetailPage() {
@@ -111,11 +130,11 @@ export default function VPSDetailPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          {vps.host_port > 0 && (
-            <a href={`http://host.mcmr.eu:${vps.host_port}`} target="_blank" rel="noopener noreferrer">
+          {vps.subdomain && (
+            <a href={`http://${vps.subdomain}.host.mcmr.eu`} target="_blank" rel="noopener noreferrer">
               <Button variant="outline" size="sm">
                 <ExternalLink className="h-4 w-4 mr-2" />
-                Voir l'app
+                Voir l&apos;app
               </Button>
             </a>
           )}
@@ -188,10 +207,31 @@ export default function VPSDetailPage() {
             </CardContent>
           </Card>
 
+          {/* SSH */}
+          {vps.ssh_port > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">Accès SSH</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Commande</p>
+                  <code className="text-xs bg-muted px-2 py-1.5 rounded block font-mono select-all">
+                    ssh root@host.mcmr.eu -p {vps.ssh_port}
+                  </code>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Mot de passe</p>
+                  <SSHPassword password={vps.ssh_password} />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Variables d'environnement */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Variables d'environnement</CardTitle>
+              <CardTitle className="text-sm font-medium">Variables d&apos;environnement</CardTitle>
               <CardDescription className="text-xs">
                 Injectées automatiquement lors du déploiement
               </CardDescription>
@@ -206,14 +246,19 @@ export default function VPSDetailPage() {
         <div className="lg:col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-medium">Déploiement Rapide</CardTitle>
+              <CardTitle className="text-sm font-medium">Déploiement ZIP</CardTitle>
               <CardDescription className="text-xs">
-                Injectez et exécutez du code directement dans votre conteneur LXD
+                Déposez votre projet en ZIP — détection automatique du framework
               </CardDescription>
             </CardHeader>
             <CardContent>
               {vps.status === "running" ? (
-                <DeploySection vpsId={vps.id} hostPort={vps.host_port} />
+                <DeploySection
+                  vpsId={vps.id}
+                  subdomain={vps.subdomain}
+                  deployStatus={vps.deploy_status}
+                  onDeployStart={fetchVPS}
+                />
               ) : (
                 <div className="flex items-center justify-center py-12 text-center">
                   <div>

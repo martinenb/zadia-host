@@ -6,18 +6,14 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"regexp"
-	"strconv"
+	"strings"
 
 	"zadia-host/db"
 )
 
-var subdomainRegex = regexp.MustCompile(`^vps-(\d+)\.`)
-
 func StartSubdomainProxy(port string) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleSubdomainProxy)
-
 	log.Printf("Proxy sous-domaines démarré sur le port %s", port)
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
 		log.Printf("Erreur proxy sous-domaines: %v", err)
@@ -26,22 +22,17 @@ func StartSubdomainProxy(port string) {
 
 func handleSubdomainProxy(w http.ResponseWriter, r *http.Request) {
 	host := r.Host
-
-	matches := subdomainRegex.FindStringSubmatch(host)
-	if len(matches) < 2 {
-		http.Error(w, "VPS introuvable", http.StatusNotFound)
+	// Extraire le subdomain (ex: "monprojet" de "monprojet.host.mcmr.eu")
+	parts := strings.Split(host, ".")
+	if len(parts) < 2 {
+		http.Error(w, "Hôte invalide", http.StatusBadRequest)
 		return
 	}
+	subdomain := parts[0]
 
-	vpsID, err := strconv.ParseInt(matches[1], 10, 64)
-	if err != nil {
-		http.Error(w, "ID VPS invalide", http.StatusBadRequest)
-		return
-	}
-
-	vps, err := db.GetVPSByID(vpsID)
-	if err != nil || vps == nil || vps.HostPort == 0 {
-		http.Error(w, "VPS non trouvé ou inactif", http.StatusNotFound)
+	vps, err := db.GetVPSBySubdomain(subdomain)
+	if err != nil || vps == nil {
+		http.Error(w, "Projet introuvable", http.StatusNotFound)
 		return
 	}
 
@@ -50,7 +41,26 @@ func handleSubdomainProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	target, err := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", vps.HostPort))
+	if vps.HostPort == 0 {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, `<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px">
+<h2>Aucun projet déployé</h2>
+<p>Déployez votre premier projet depuis le <a href="http://host.mcmr.eu:8880/vps/%d">panel Zadia Host</a>.</p>
+</body></html>`, vps.ID)
+		return
+	}
+
+	if vps.DeployStatus == "building" {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Refresh", "5")
+		fmt.Fprintf(w, `<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px">
+<h2>Déploiement en cours...</h2><p>Cette page se rafraîchira automatiquement.</p>
+</body></html>`)
+		return
+	}
+
+	// Proxyer vers le port LXD proxy device via host.docker.internal
+	target, err := url.Parse(fmt.Sprintf("http://host.docker.internal:%d", vps.HostPort))
 	if err != nil {
 		http.Error(w, "Erreur configuration proxy", http.StatusInternalServerError)
 		return
@@ -58,11 +68,10 @@ func handleSubdomainProxy(w http.ResponseWriter, r *http.Request) {
 
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		log.Printf("Erreur proxy vps-%d: %v", vpsID, err)
-		http.Error(w, "Le service est temporairement indisponible", http.StatusBadGateway)
+		log.Printf("Erreur proxy %s: %v", subdomain, err)
+		http.Error(w, "Service temporairement indisponible", http.StatusBadGateway)
 	}
 
-	// Conserver l'Host original pour les apps qui en ont besoin
 	r.Header.Set("X-Forwarded-Host", r.Host)
 	r.Header.Set("X-Real-IP", r.RemoteAddr)
 	r.URL.Host = target.Host

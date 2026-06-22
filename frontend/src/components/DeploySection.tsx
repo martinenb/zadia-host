@@ -1,124 +1,170 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Loader2, Rocket, ExternalLink, CheckCircle2 } from "lucide-react"
+import { Loader2, Upload, CheckCircle2, AlertCircle, ExternalLink, FolderArchive } from "lucide-react"
 
 interface DeploySectionProps {
   vpsId: number
-  hostPort: number
+  subdomain: string
+  deployStatus: string
+  onDeployStart: () => void
 }
 
-export default function DeploySection({ vpsId, hostPort }: DeploySectionProps) {
-  const [code, setCode] = useState("")
-  const [filename, setFilename] = useState("index.html")
-  const [command, setCommand] = useState("python3 -m http.server 80")
-  const [loading, setLoading] = useState(false)
+export default function DeploySection({ vpsId, subdomain, deployStatus, onDeployStart }: DeploySectionProps) {
+  const [file, setFile] = useState<File | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
-  const [accessUrl, setAccessUrl] = useState("")
+  const [result, setResult] = useState<{ label: string; framework: string } | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  const handleDeploy = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
+  const handleFile = (f: File) => {
+    if (!f.name.endsWith(".zip")) {
+      setError("Seuls les fichiers ZIP sont acceptés")
+      return
+    }
+    setFile(f)
     setError("")
-    setSuccess("")
+    setResult(null)
+  }
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setDragging(false)
+    const f = e.dataTransfer.files[0]
+    if (f) handleFile(f)
+  }, [])
+
+  const handleDeploy = async () => {
+    if (!file) return
+    setUploading(true)
+    setError("")
 
     try {
-      const res = await fetch(`/api/vps/${vpsId}/deploy`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, filename, command }),
-      })
-
+      const form = new FormData()
+      form.append("file", file)
+      const res = await fetch(`/api/vps/${vpsId}/deploy`, { method: "POST", body: form })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Erreur de déploiement")
-
-      setSuccess("Code déployé avec succès !")
-      setAccessUrl(data.access_url || `http://host.mcmr.eu:${hostPort}`)
+      setResult({ label: data.label, framework: data.framework })
+      onDeployStart()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur inconnue")
     } finally {
-      setLoading(false)
+      setUploading(false)
     }
   }
 
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`
+    return `${(bytes / 1024 / 1024).toFixed(1)} Mo`
+  }
+
+  const isBuilding = deployStatus === "building"
+  const isRunning = deployStatus === "running"
+
   return (
-    <form onSubmit={handleDeploy} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="filename">Nom du fichier</Label>
-          <Input
-            id="filename"
-            value={filename}
-            onChange={e => setFilename(e.target.value)}
-            placeholder="index.html"
-            className="font-mono text-sm"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="command">Commande d'exécution</Label>
-          <Input
-            id="command"
-            value={command}
-            onChange={e => setCommand(e.target.value)}
-            placeholder="python3 -m http.server 80"
-            className="font-mono text-sm"
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="code">Code source</Label>
-        <Textarea
-          id="code"
-          value={code}
-          onChange={e => setCode(e.target.value)}
-          placeholder="Collez votre code source ici..."
-          className="font-mono text-sm min-h-[300px] resize-y"
-          required
+    <div className="space-y-4">
+      {/* Zone de drop */}
+      <div
+        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+          dragging ? "border-primary bg-primary/5" : "border-border hover:border-border/60"
+        }`}
+        onDragOver={e => { e.preventDefault(); setDragging(true) }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
+        onClick={() => inputRef.current?.click()}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".zip"
+          className="hidden"
+          onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])}
         />
-        <p className="text-xs text-muted-foreground">
-          Pour les fichiers HTML, un footer Zadia Host sera automatiquement ajouté.
-        </p>
+        {file ? (
+          <div className="space-y-1">
+            <FolderArchive className="h-8 w-8 mx-auto text-primary" />
+            <p className="text-sm font-medium">{file.name}</p>
+            <p className="text-xs text-muted-foreground">{formatSize(file.size)}</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
+            <div>
+              <p className="text-sm font-medium">Glissez votre projet ici</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                ZIP contenant votre projet (Next.js, Python, PHP, HTML...)
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* Info frameworks supportés */}
+      <div className="flex flex-wrap gap-1.5">
+        {["Next.js", "Vite", "React", "Python", "Flask", "FastAPI", "PHP", "HTML"].map(f => (
+          <span key={f} className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
+            {f}
+          </span>
+        ))}
+      </div>
+
+      {/* Erreur */}
       {error && (
-        <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2">
+        <div className="flex items-start gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2">
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
           {error}
-        </p>
+        </div>
       )}
 
-      {success && (
+      {/* Statut building */}
+      {isBuilding && (
+        <div className="flex items-center gap-2 text-sm text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded-md px-3 py-2">
+          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+          Installation des dépendances et démarrage en cours...
+        </div>
+      )}
+
+      {/* Succès */}
+      {(isRunning || result) && (
         <div className="bg-green-500/10 border border-green-500/20 rounded-md px-3 py-3 space-y-2">
           <div className="flex items-center gap-2 text-sm text-green-400">
             <CheckCircle2 className="h-4 w-4" />
-            {success}
+            {result ? `${result.label} déployé avec succès` : "Projet en ligne"}
           </div>
-          {accessUrl && (
+          {subdomain && (
             <a
-              href={accessUrl}
+              href={`http://${subdomain}.host.mcmr.eu`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
             >
               <ExternalLink className="h-3 w-3" />
-              {accessUrl}
+              {subdomain}.host.mcmr.eu
             </a>
           )}
         </div>
       )}
 
-      <Button type="submit" disabled={loading || !code.trim()} className="w-full">
-        {loading ? (
-          <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Déploiement en cours...</>
+      <Button
+        onClick={handleDeploy}
+        disabled={!file || uploading || isBuilding}
+        className="w-full"
+      >
+        {uploading ? (
+          <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Upload en cours...</>
+        ) : isBuilding ? (
+          <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Build en cours...</>
         ) : (
-          <><Rocket className="mr-2 h-4 w-4" />Déployer le code</>
+          <><Upload className="mr-2 h-4 w-4" />Déployer le projet</>
         )}
       </Button>
-    </form>
+
+      <p className="text-xs text-muted-foreground">
+        N&apos;incluez pas <code className="bg-muted px-1 rounded">node_modules</code> ou <code className="bg-muted px-1 rounded">.git</code> dans votre ZIP.
+      </p>
+    </div>
   )
 }

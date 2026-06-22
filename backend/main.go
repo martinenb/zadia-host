@@ -26,11 +26,12 @@ func main() {
 	// Démarrer le proxy sous-domaines en arrière-plan
 	proxyPort := os.Getenv("PROXY_PORT")
 	if proxyPort == "" {
-		proxyPort = "9090"
+		proxyPort = "80"
 	}
 	go handlers.StartSubdomainProxy(proxyPort)
 
 	app := fiber.New(fiber.Config{
+		BodyLimit: 200 * 1024 * 1024, // 200 MB
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		},
@@ -52,7 +53,7 @@ func main() {
 	api.Delete("/vps/:id", handlers.DeleteVPS)
 	api.Post("/vps/:id/start", handlers.StartVPS)
 	api.Post("/vps/:id/stop", handlers.StopVPS)
-	api.Post("/vps/:id/deploy", handlers.DeployCode)
+	api.Post("/vps/:id/deploy", handlers.DeployProject)
 
 	// Routes Variables d'environnement
 	api.Get("/vps/:id/env", handlers.GetEnvVars)

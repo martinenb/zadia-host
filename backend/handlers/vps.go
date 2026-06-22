@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -12,6 +14,24 @@ import (
 	lxdpkg "zadia-host/lxd"
 	"zadia-host/models"
 )
+
+func sanitizeSubdomain(name string) string {
+	name = strings.ToLower(name)
+	re := regexp.MustCompile(`[^a-z0-9-]`)
+	name = re.ReplaceAllString(name, "-")
+	re2 := regexp.MustCompile(`-+`)
+	name = re2.ReplaceAllString(name, "-")
+	return strings.Trim(name, "-")
+}
+
+func generatePassword() string {
+	const chars = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	b := make([]byte, 14)
+	for i := range b {
+		b[i] = chars[rand.Intn(len(chars))]
+	}
+	return string(b)
+}
 
 func GetAllVPS(c *fiber.Ctx) error {
 	vpsList, err := db.GetAllVPS()
@@ -43,13 +63,25 @@ func CreateVPS(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Champs requis manquants"})
 	}
 
+	// Sanitiser le nom en subdomain
+	subdomain := sanitizeSubdomain(req.Name)
+	if subdomain == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Nom de projet invalide pour un sous-domaine"})
+	}
+
+	// Vérifier l'unicité du subdomain
+	if db.SubdomainExists(subdomain) {
+		return c.Status(409).JSON(fiber.Map{"error": fmt.Sprintf("Le sous-domaine '%s' est déjà utilisé", subdomain)})
+	}
+
 	vps := &models.VPS{
-		Name:   req.Name,
-		OS:     req.OS,
-		VCores: req.VCores,
-		RAMGB:  req.RAMGB,
-		DiskGB: req.DiskGB,
-		Status: "creating",
+		Name:      req.Name,
+		Subdomain: subdomain,
+		OS:        req.OS,
+		VCores:    req.VCores,
+		RAMGB:     req.RAMGB,
+		DiskGB:    req.DiskGB,
+		Status:    "creating",
 	}
 
 	id, err := db.CreateVPS(vps)
@@ -92,12 +124,28 @@ func CreateVPS(c *fiber.Ctx) error {
 
 		log.Printf("[LXD] %s prêt — IP:%s port:%d", containerName, ip, hostPort)
 		db.UpdateVPSStatus(id, "running", ip)
+
+		// Générer les credentials SSH
+		sshPass := generatePassword()
+		sshPort := 20000 + rand.Intn(5000)
+		log.Printf("[LXD] %s — Configuration SSH (port %d)...", containerName, sshPort)
+		if err := lxdpkg.SetupSSH(containerName, sshPass, req.OS); err != nil {
+			log.Printf("[LXD] AVERTISSEMENT SSH %s: %v", containerName, err)
+		} else {
+			if err := lxdpkg.AddSSHProxyDevice(containerName, sshPort); err != nil {
+				log.Printf("[LXD] AVERTISSEMENT proxy SSH %s: %v", containerName, err)
+			} else {
+				db.UpdateVPSSSH(id, sshPort, sshPass)
+				log.Printf("[LXD] %s — SSH prêt (port %d)", containerName, sshPort)
+			}
+		}
 	}()
 
 	return c.Status(202).JSON(fiber.Map{
-		"id":      id,
-		"message": "VPS en cours de création",
-		"status":  "creating",
+		"id":        id,
+		"subdomain": subdomain,
+		"message":   "VPS en cours de création",
+		"status":    "creating",
 	})
 }
 

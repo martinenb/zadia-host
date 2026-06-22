@@ -1,19 +1,21 @@
 package handlers
 
 import (
+	"archive/zip"
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"zadia-host/db"
 	lxdpkg "zadia-host/lxd"
-	"zadia-host/models"
 )
 
-const watermark = `<footer style="position:fixed;bottom:0;left:0;right:0;text-align:center;padding:10px 20px;font-family:sans-serif;color:#888;font-size:12px;background:rgba(0,0,0,0.05);">Hébergé sur <strong>Zadia Host</strong></footer>`
-
-func DeployCode(c *fiber.Ctx) error {
+func DeployProject(c *fiber.Ctx) error {
 	id, err := strconv.ParseInt(c.Params("id"), 10, 64)
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "ID invalide"})
@@ -23,80 +25,193 @@ func DeployCode(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "VPS non trouvé"})
 	}
-
 	if vps.Status != "running" {
 		return c.Status(400).JSON(fiber.Map{"error": "Le VPS doit être en cours d'exécution"})
 	}
 
-	var req models.DeployRequest
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Corps de requête invalide"})
+	// Récupérer le fichier ZIP
+	file, err := c.FormFile("file")
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Fichier ZIP requis"})
+	}
+	if !strings.HasSuffix(strings.ToLower(file.Filename), ".zip") {
+		return c.Status(400).JSON(fiber.Map{"error": "Seuls les fichiers ZIP sont acceptés"})
 	}
 
-	if req.Code == "" || req.Filename == "" || req.Command == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "Code, nom de fichier et commande requis"})
+	// Sauvegarder temporairement sur le host
+	tmpZip := fmt.Sprintf("/tmp/zadia-deploy-%d-%d.zip", id, time.Now().UnixNano())
+	if err := c.SaveFile(file, tmpZip); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Sauvegarde fichier: " + err.Error()})
 	}
+
+	// Extraire pour détection
+	tmpDir := tmpZip + "-extracted"
+	if err := extractZip(tmpZip, tmpDir); err != nil {
+		os.Remove(tmpZip)
+		return c.Status(500).JSON(fiber.Map{"error": "Extraction ZIP: " + err.Error()})
+	}
+
+	// Détecter le type de projet
+	info := lxdpkg.DetectProject(tmpDir, vps.OS)
+
+	if info.Framework == "unknown" {
+		os.RemoveAll(tmpDir)
+		os.Remove(tmpZip)
+		return c.Status(400).JSON(fiber.Map{
+			"error": "Type de projet non reconnu. Assurez-vous que votre ZIP contient un package.json, requirements.txt, index.php ou index.html",
+		})
+	}
+
+	log.Printf("[DEPLOY] VPS %d — Projet détecté: %s", id, info.Label)
+
+	// Mettre à jour le statut en DB
+	db.UpdateVPSDeploy(id, "building", info.AppPort)
 
 	containerName := fmt.Sprintf("vps-%d", vps.ID)
 
-	// Injecter le watermark si fichier HTML
-	code := req.Code
-	if strings.HasSuffix(strings.ToLower(req.Filename), ".html") {
-		if idx := strings.LastIndex(code, "</body>"); idx != -1 {
-			code = code[:idx] + watermark + "\n" + code[idx:]
-		} else {
-			code = code + "\n" + watermark
+	// Lancer le déploiement en asynchrone
+	go func() {
+		defer os.RemoveAll(tmpDir)
+		defer os.Remove(tmpZip)
+
+		log.Printf("[DEPLOY] %s — Envoi du ZIP dans le conteneur...", containerName)
+
+		// Pousser le ZIP dans le conteneur
+		f, err := os.Open(tmpZip)
+		if err != nil {
+			log.Printf("[DEPLOY] ERREUR ouverture ZIP: %v", err)
+			db.UpdateVPSDeploy(id, "error", 0)
+			return
 		}
-	}
+		defer f.Close()
 
-	// Récupérer les variables d'env depuis la DB
-	envVars, err := db.GetAllEnvVarsAsMap(id)
-	if err != nil {
-		envVars = make(map[string]string)
-	}
-
-	// Fusionner avec les env_vars de la requête
-	if req.EnvVars != nil {
-		for k, v := range req.EnvVars {
-			envVars[k] = v
+		lxdpkg.EnsureDirectory(containerName, "/root/app")
+		if err := lxdpkg.PushBinaryFile(containerName, "/root/app/project.zip", f); err != nil {
+			log.Printf("[DEPLOY] ERREUR push ZIP: %v", err)
+			db.UpdateVPSDeploy(id, "error", 0)
+			return
 		}
-	}
 
-	// Créer le répertoire /root/app/
-	if err := lxdpkg.EnsureDirectory(containerName, "/root/app"); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Création répertoire: " + err.Error()})
-	}
+		// Installer unzip dans le conteneur
+		switch vps.OS {
+		case "alpine":
+			lxdpkg.ExecCommand(containerName, []string{"apk", "add", "--no-cache", "unzip"}, nil)
+		default:
+			lxdpkg.ExecCommand(containerName, []string{"apt-get", "install", "-y", "-qq", "unzip"}, nil)
+		}
 
-	// Pousser le fichier
-	destPath := "/root/app/" + req.Filename
-	if err := lxdpkg.PushFile(containerName, destPath, code); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Upload fichier: " + err.Error()})
-	}
+		// Extraire le ZIP dans /root/app/
+		lxdpkg.ExecCommand(containerName, []string{"sh", "-c",
+			"rm -rf /root/app/src && mkdir -p /root/app/src && unzip -o /root/app/project.zip -d /root/app/src && rm /root/app/project.zip"}, nil)
 
-	// Construire la commande avec les variables d'env
-	shellCmd := buildCommandWithEnv(req.Command, envVars)
+		// Setup : installation du runtime (node, python...)
+		for _, cmd := range info.SetupCmds {
+			log.Printf("[DEPLOY] Setup: %s", strings.Join(cmd, " "))
+			if err := lxdpkg.ExecCommand(containerName, cmd, nil); err != nil {
+				log.Printf("[DEPLOY] AVERTISSEMENT setup: %v", err)
+			}
+		}
 
-	// Exécuter la commande en arrière-plan via nohup
-	bgCommand := []string{"sh", "-c", fmt.Sprintf("cd /root/app && nohup %s > /root/app/output.log 2>&1 &", shellCmd)}
-	if err := lxdpkg.ExecCommand(containerName, bgCommand, envVars); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Exécution commande: " + err.Error()})
-	}
+		// Build (install deps + compilation)
+		for _, cmd := range info.BuildCmds {
+			log.Printf("[DEPLOY] Build: %s", strings.Join(cmd, " "))
+			fullCmd := []string{"sh", "-c", "cd /root/app/src && " + strings.Join(cmd, " ")}
+			if err := lxdpkg.ExecCommand(containerName, fullCmd, nil); err != nil {
+				log.Printf("[DEPLOY] AVERTISSEMENT build: %v", err)
+			}
+		}
 
-	accessURL := fmt.Sprintf("http://host.mcmr.eu:%d", vps.HostPort)
-	return c.JSON(fiber.Map{
-		"message":    "Code déployé avec succès",
-		"access_url": accessURL,
-		"file":       destPath,
+		// Tuer l'ancienne instance si elle tourne
+		lxdpkg.ExecCommand(containerName, []string{"sh", "-c",
+			fmt.Sprintf("fuser -k %d/tcp 2>/dev/null || pkill -f '%s' 2>/dev/null || true", info.AppPort, info.StartCmd)}, nil)
+
+		// Démarrer l'application en arrière-plan
+		bgCmd := fmt.Sprintf("cd /root/app/src && nohup %s > /root/app/output.log 2>&1 &", info.StartCmd)
+		log.Printf("[DEPLOY] Démarrage: %s", info.StartCmd)
+
+		// Récupérer les variables d'env
+		envVars, _ := db.GetAllEnvVarsAsMap(id)
+		if err := lxdpkg.ExecCommand(containerName, []string{"sh", "-c", bgCmd}, envVars); err != nil {
+			log.Printf("[DEPLOY] ERREUR démarrage: %v", err)
+			db.UpdateVPSDeploy(id, "error", 0)
+			return
+		}
+
+		// Mettre à jour le proxy device si le port a changé
+		if vps.HostPort > 0 && info.AppPort != 80 {
+			// Le proxy device actuel pointe vers port 80, on le met à jour
+			lxdpkg.UpdateProxyDevice(containerName, vps.HostPort, info.AppPort)
+		}
+
+		db.UpdateVPSDeploy(id, "running", info.AppPort)
+		log.Printf("[DEPLOY] %s — Déploiement terminé (%s)", containerName, info.Label)
+	}()
+
+	return c.Status(202).JSON(fiber.Map{
+		"status":    "building",
+		"framework": info.Framework,
+		"label":     info.Label,
+		"message":   fmt.Sprintf("Déploiement %s en cours...", info.Label),
 	})
 }
 
-func buildCommandWithEnv(command string, env map[string]string) string {
-	if len(env) == 0 {
-		return command
+// extractZip extrait un ZIP dans destDir, en gérant le préfixe commun
+func extractZip(src, destDir string) error {
+	r, err := zip.OpenReader(src)
+	if err != nil {
+		return err
 	}
-	var parts []string
-	for k, v := range env {
-		parts = append(parts, fmt.Sprintf("export %s=%q", k, v))
+	defer r.Close()
+
+	// Détecter le préfixe commun
+	names := make([]string, 0, len(r.File))
+	for _, f := range r.File {
+		names = append(names, f.Name)
 	}
-	return strings.Join(parts, " && ") + " && " + command
+	prefix := lxdpkg.StripZipPrefix(names)
+
+	for _, f := range r.File {
+		name := f.Name
+		if prefix != "" {
+			name = strings.TrimPrefix(name, prefix)
+		}
+		if name == "" {
+			continue
+		}
+
+		destPath := filepath.Join(destDir, name)
+		// Protection path traversal
+		if !strings.HasPrefix(filepath.Clean(destPath), filepath.Clean(destDir)) {
+			continue
+		}
+
+		if f.FileInfo().IsDir() {
+			os.MkdirAll(destPath, 0755)
+			continue
+		}
+
+		os.MkdirAll(filepath.Dir(destPath), 0755)
+		out, err := os.Create(destPath)
+		if err != nil {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			out.Close()
+			continue
+		}
+		buf := make([]byte, 32*1024)
+		for {
+			n, readErr := rc.Read(buf)
+			if n > 0 {
+				out.Write(buf[:n])
+			}
+			if readErr != nil {
+				break
+			}
+		}
+		rc.Close()
+		out.Close()
+	}
+	return nil
 }

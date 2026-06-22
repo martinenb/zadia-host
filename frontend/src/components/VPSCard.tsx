@@ -9,6 +9,7 @@ import { Cpu, HardDrive, MemoryStick, Play, Square, Trash2, ExternalLink } from 
 interface VPS {
   id: number
   name: string
+  subdomain: string
   os: string
   vcores: number
   ram_gb: number
@@ -16,6 +17,8 @@ interface VPS {
   status: string
   ip: string
   host_port: number
+  ssh_port: number
+  deploy_status: string
   created_at: string
 }
 
@@ -75,15 +78,15 @@ export default function VPSCard({ vps, onRefresh }: VPSCardProps) {
           <p className="text-xs text-muted-foreground font-mono">IP: {vps.ip}</p>
         )}
 
-        {vps.host_port > 0 && (
+        {vps.subdomain && (
           <a
-            href={`http://host.mcmr.eu:${vps.host_port}`}
+            href={`http://${vps.subdomain}.host.mcmr.eu`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
           >
             <ExternalLink className="h-3 w-3" />
-            host.mcmr.eu:{vps.host_port}
+            {vps.subdomain}.host.mcmr.eu
           </a>
         )}
 
