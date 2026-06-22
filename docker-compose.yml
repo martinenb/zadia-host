@@ -28,10 +28,10 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://zadia:zadia@localhost:5432/zadiahost?sslmode=disable
-      PORT: 8080
+      PORT: 8081
       PROXY_PORT: "9090"
     ports:
-      - "8080:8080"
+      - "8081:8081"
     volumes:
       # Montage du socket LXD de l'hôte pour que le backend puisse contrôler LXD
       - /var/snap/lxd/common/lxd/unix.socket:/var/snap/lxd/common/lxd/unix.socket
@@ -50,8 +50,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8080
-      BACKEND_URL: http://host.docker.internal:8080
+      NEXT_PUBLIC_API_URL: http://localhost:8081
+      BACKEND_URL: http://host.docker.internal:8081
     ports:
       - "8880:3000"
 
