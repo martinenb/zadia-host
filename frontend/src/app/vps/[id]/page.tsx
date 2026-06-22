@@ -50,15 +50,11 @@ function CopyButton({ text }: { text: string }) {
 }
 
 function SSHMainCard({
-  vpsId, sshPort, sshPassword, status, actionLoading, setActionLoading, fetchVPS
+  sshPort, sshPassword, status
 }: {
-  vpsId: string
   sshPort: number
   sshPassword: string
   status: string
-  actionLoading: string
-  setActionLoading: (s: string) => void
-  fetchVPS: () => void
 }) {
   const [passVisible, setPassVisible] = useState(false)
   const sshCmd = `ssh root@host.mcmr.eu -p ${sshPort}`
@@ -66,40 +62,16 @@ function SSHMainCard({
   if (sshPort === 0) {
     return (
       <div className="rounded-lg border border-border bg-card p-6 flex flex-col items-center gap-4 text-center">
-        {status === "creating" ? (
-          <>
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            <div>
-              <p className="text-sm font-medium">Provisionnement en cours...</p>
-              <p className="text-xs text-muted-foreground mt-1">SSH sera configuré automatiquement. Patiente ~2 minutes.</p>
-            </div>
-          </>
-        ) : (
-          <>
-            <Terminal className="h-6 w-6 text-muted-foreground" />
-            <div>
-              <p className="text-sm font-medium">SSH non configuré</p>
-              <p className="text-xs text-muted-foreground mt-1">Clique pour configurer l&apos;accès SSH sur ce VPS.</p>
-            </div>
-            {status === "running" && (
-              <Button
-                size="sm"
-                disabled={actionLoading === "ssh"}
-                onClick={async () => {
-                  setActionLoading("ssh")
-                  await fetch(`/api/vps/${vpsId}/setup-ssh`, { method: "POST" })
-                  setTimeout(() => { fetchVPS(); setActionLoading("") }, 35000)
-                  fetchVPS()
-                }}
-              >
-                {actionLoading === "ssh"
-                  ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Configuration en cours (~30s)...</>
-                  : <><Terminal className="h-3 w-3 mr-1.5" />Configurer SSH</>
-                }
-              </Button>
-            )}
-          </>
-        )}
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div>
+          <p className="text-sm font-medium">Configuration SSH en cours...</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {status === "creating"
+              ? "Le VPS démarre et SSH se configure automatiquement. ~2 minutes."
+              : "SSH se configure automatiquement, rafraîchis dans quelques instants."
+            }
+          </p>
+        </div>
       </div>
     )
   }
@@ -274,13 +246,9 @@ export default function VPSDetailPage() {
       {/* Mode VPS : SSH en premier plan */}
       {vps.type === "vps" && (
         <SSHMainCard
-          vpsId={id}
           sshPort={vps.ssh_port}
           sshPassword={vps.ssh_password}
           status={vps.status}
-          actionLoading={actionLoading}
-          setActionLoading={setActionLoading}
-          fetchVPS={fetchVPS}
         />
       )}
 
