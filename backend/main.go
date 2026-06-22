@@ -3,12 +3,13 @@ package main
 import (
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
-	"github.com/valyala/fasthttp/fasthttpadaptor"
 	"zadia-host/db"
 	"zadia-host/handlers"
 )
@@ -45,7 +46,6 @@ func main() {
 	}))
 
 	api := app.Group("/api")
-
 	api.Get("/vps", handlers.GetAllVPS)
 	api.Post("/vps", handlers.CreateVPS)
 	api.Get("/vps/:id", handlers.GetVPS)
@@ -60,12 +60,24 @@ func main() {
 	api.Post("/vps/:id/env", handlers.CreateEnvVar)
 	api.Delete("/vps/:id/env/:envId", handlers.DeleteEnvVar)
 
-	// Mux principal : WebSocket sur /ws/terminal/, tout le reste → Fiber
-	// Permet d'avoir gorilla/websocket et Fiber sur le même port (8083)
-	// sans ouvrir de port supplémentaire.
+	// Fiber tourne sur un port interne non exposé (8084).
+	// Le mux net/http public (port 8083) route :
+	//   /ws/terminal/* → gorilla/websocket (WebSocket natif)
+	//   tout le reste   → Fiber via reverse proxy localhost
+	go func() {
+		if err := app.Listen(":8084"); err != nil {
+			log.Fatalf("Erreur Fiber: %v", err)
+		}
+	}()
+
+	fiberProxy := httputil.NewSingleHostReverseProxy(&url.URL{
+		Scheme: "http",
+		Host:   "localhost:8084",
+	})
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws/terminal/", handlers.TerminalHandler)
-	mux.Handle("/", fasthttpadaptor.NewFastHTTPHandler(app.Handler()))
+	mux.Handle("/", fiberProxy)
 
 	port := os.Getenv("PORT")
 	if port == "" {
