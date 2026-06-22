@@ -15,20 +15,42 @@ func ConnectLXD() (lxdclient.InstanceServer, error) {
 	return lxdclient.ConnectLXDUnix(lxdSocket, nil)
 }
 
-// osToSource retourne le serveur et l'alias image LXD pour un OS donné
-func osToSource(os string) (server, alias string) {
-	server = "https://images.lxd.canonical.com"
+type imageSource struct {
+	server   string
+	protocol string
+	alias    string
+}
+
+// osToSource retourne le serveur, protocole et alias image LXD pour un OS donné.
+// Ubuntu utilise son propre serveur simplestreams (alias court "22.04").
+// Les autres OS passent par images.lxd.canonical.com.
+func osToSource(os string) imageSource {
 	switch os {
 	case "ubuntu":
-		alias = "ubuntu/22.04"
+		return imageSource{
+			server:   "https://cloud-images.ubuntu.com/releases",
+			protocol: "simplestreams",
+			alias:    "22.04",
+		}
 	case "debian":
-		alias = "debian/12"
+		return imageSource{
+			server:   "https://images.lxd.canonical.com",
+			protocol: "simplestreams",
+			alias:    "debian/bookworm/amd64",
+		}
 	case "alpine":
-		alias = "alpine/3.19"
+		return imageSource{
+			server:   "https://images.lxd.canonical.com",
+			protocol: "simplestreams",
+			alias:    "alpine/3.19/amd64",
+		}
 	default:
-		alias = "ubuntu/22.04"
+		return imageSource{
+			server:   "https://cloud-images.ubuntu.com/releases",
+			protocol: "simplestreams",
+			alias:    "22.04",
+		}
 	}
-	return
 }
 
 func CreateContainer(name, os string, vcores, ramGB, diskGB int) error {
@@ -37,16 +59,16 @@ func CreateContainer(name, os string, vcores, ramGB, diskGB int) error {
 		return fmt.Errorf("connexion LXD: %w", err)
 	}
 
-	server, alias := osToSource(os)
+	src := osToSource(os)
 
 	req := api.InstancesPost{
 		Name: name,
 		Type: api.InstanceTypeContainer,
 		Source: api.InstanceSource{
 			Type:     "image",
-			Alias:    alias,
-			Server:   server,
-			Protocol: "simplestreams",
+			Alias:    src.alias,
+			Server:   src.server,
+			Protocol: src.protocol,
 		},
 		InstancePut: api.InstancePut{
 			Config: map[string]string{
