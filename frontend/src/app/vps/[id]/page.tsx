@@ -41,7 +41,7 @@ export default function VPSDetailPage() {
 
   const fetchVPS = useCallback(async () => {
     try {
-      const res = await fetch(`http://localhost:8080/api/vps/${id}`)
+      const res = await fetch(`/api/vps/${id}`)
       if (res.ok) {
         const data = await res.json()
         setVps(data)
@@ -62,8 +62,8 @@ export default function VPSDetailPage() {
     try {
       const method = action === "delete" ? "DELETE" : "POST"
       const url = action === "delete"
-        ? `http://localhost:8080/api/vps/${id}`
-        : `http://localhost:8080/api/vps/${id}/${action}`
+        ? `/api/vps/${id}`
+        : `/api/vps/${id}/${action}`
       await fetch(url, { method })
       if (action === "delete") {
         router.push("/")

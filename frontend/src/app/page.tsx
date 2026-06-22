@@ -27,7 +27,7 @@ export default function HomePage() {
 
   const fetchVPS = useCallback(async () => {
     try {
-      const res = await fetch("http://localhost:8080/api/vps")
+      const res = await fetch("/api/vps")
       if (res.ok) {
         const data = await res.json()
         setVpsList(data || [])

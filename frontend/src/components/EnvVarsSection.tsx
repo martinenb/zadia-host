@@ -27,7 +27,7 @@ export default function EnvVarsSection({ vpsId }: EnvVarsSectionProps) {
 
   const fetchEnvVars = async () => {
     try {
-      const res = await fetch(`http://localhost:8080/api/vps/${vpsId}/env`)
+      const res = await fetch(`/api/vps/${vpsId}/env`)
       if (res.ok) {
         const data = await res.json()
         setEnvVars(data || [])
@@ -45,7 +45,7 @@ export default function EnvVarsSection({ vpsId }: EnvVarsSectionProps) {
     setLoading(true)
     setError("")
     try {
-      const res = await fetch(`http://localhost:8080/api/vps/${vpsId}/env`, {
+      const res = await fetch(`/api/vps/${vpsId}/env`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key: newKey.trim(), value: newValue }),
@@ -65,7 +65,7 @@ export default function EnvVarsSection({ vpsId }: EnvVarsSectionProps) {
   }
 
   const handleDelete = async (envId: number) => {
-    await fetch(`http://localhost:8080/api/vps/${vpsId}/env/${envId}`, { method: "DELETE" })
+    await fetch(`/api/vps/${vpsId}/env/${envId}`, { method: "DELETE" })
     fetchEnvVars()
   }
 

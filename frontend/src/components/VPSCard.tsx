@@ -35,8 +35,8 @@ export default function VPSCard({ vps, onRefresh }: VPSCardProps) {
   const handleAction = async (action: "start" | "stop" | "delete") => {
     const method = action === "delete" ? "DELETE" : "POST"
     const url = action === "delete"
-      ? `http://localhost:8080/api/vps/${vps.id}`
-      : `http://localhost:8080/api/vps/${vps.id}/${action}`
+      ? `/api/vps/${vps.id}`
+      : `/api/vps/${vps.id}/${action}`
 
     await fetch(url, { method })
     onRefresh()

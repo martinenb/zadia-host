@@ -23,6 +23,13 @@ func main() {
 	}
 	log.Println("Base de données PostgreSQL connectée")
 
+	// Démarrer le proxy sous-domaines en arrière-plan
+	proxyPort := os.Getenv("PROXY_PORT")
+	if proxyPort == "" {
+		proxyPort = "9090"
+	}
+	go handlers.StartSubdomainProxy(proxyPort)
+
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})

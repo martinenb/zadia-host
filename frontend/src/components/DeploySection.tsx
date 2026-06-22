@@ -28,7 +28,7 @@ export default function DeploySection({ vpsId, hostPort }: DeploySectionProps) {
     setSuccess("")
 
     try {
-      const res = await fetch(`http://localhost:8080/api/vps/${vpsId}/deploy`, {
+      const res = await fetch(`/api/vps/${vpsId}/deploy`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, filename, command }),
