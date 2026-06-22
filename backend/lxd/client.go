@@ -15,18 +15,20 @@ func ConnectLXD() (lxdclient.InstanceServer, error) {
 	return lxdclient.ConnectLXDUnix(lxdSocket, nil)
 }
 
-// OSToAlias mappe le nom OS vers l'alias image LXD
-func OSToAlias(os string) string {
+// osToSource retourne le serveur et l'alias image LXD pour un OS donné
+func osToSource(os string) (server, alias string) {
+	server = "https://images.lxd.canonical.com"
 	switch os {
 	case "ubuntu":
-		return "ubuntu:22.04"
+		alias = "ubuntu/22.04"
 	case "debian":
-		return "debian:12"
+		alias = "debian/12"
 	case "alpine":
-		return "alpine:3.19"
+		alias = "alpine/3.19"
 	default:
-		return "ubuntu:22.04"
+		alias = "ubuntu/22.04"
 	}
+	return
 }
 
 func CreateContainer(name, os string, vcores, ramGB, diskGB int) error {
@@ -35,14 +37,16 @@ func CreateContainer(name, os string, vcores, ramGB, diskGB int) error {
 		return fmt.Errorf("connexion LXD: %w", err)
 	}
 
-	alias := OSToAlias(os)
+	server, alias := osToSource(os)
 
 	req := api.InstancesPost{
 		Name: name,
 		Type: api.InstanceTypeContainer,
 		Source: api.InstanceSource{
-			Type:  "image",
-			Alias: alias,
+			Type:     "image",
+			Alias:    alias,
+			Server:   server,
+			Protocol: "simplestreams",
 		},
 		InstancePut: api.InstancePut{
 			Config: map[string]string{
