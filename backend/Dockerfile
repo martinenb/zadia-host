@@ -2,10 +2,10 @@ FROM golang:1.22-alpine AS builder
 
 WORKDIR /app
 
-# Installer les dépendances système pour cgo (sqlite3, lib/pq)
-RUN apk add --no-cache gcc musl-dev
+# git requis par go mod download pour certains modules VCS
+RUN apk add --no-cache git
 
-COPY go.mod go.sum ./
+COPY go.mod ./
 RUN go mod download
 
 COPY . .
