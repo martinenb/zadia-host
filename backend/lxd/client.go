@@ -38,13 +38,14 @@ func CreateContainer(name, os string, vcores, ramGB, diskGB int) error {
 
 	alias := OSToAlias(os)
 
-	req := api.ContainersPost{
+	req := api.InstancesPost{
 		Name: name,
-		Source: api.ContainerSource{
+		Type: api.InstanceTypeContainer,
+		Source: api.InstanceSource{
 			Type:  "image",
 			Alias: alias,
 		},
-		ContainerPut: api.ContainerPut{
+		InstancePut: api.InstancePut{
 			Config: map[string]string{
 				"limits.cpu":    fmt.Sprintf("%d", vcores),
 				"limits.memory": fmt.Sprintf("%dGB", ramGB),
@@ -60,9 +61,9 @@ func CreateContainer(name, os string, vcores, ramGB, diskGB int) error {
 		},
 	}
 
-	op, err := client.CreateContainer(req)
+	op, err := client.CreateInstance(req)
 	if err != nil {
-		return fmt.Errorf("création conteneur: %w", err)
+		return fmt.Errorf("création instance: %w", err)
 	}
 	return op.Wait()
 }
@@ -73,13 +74,13 @@ func StartContainer(name string) error {
 		return fmt.Errorf("connexion LXD: %w", err)
 	}
 
-	req := api.ContainerStatePut{
+	req := api.InstanceStatePut{
 		Action:  "start",
 		Timeout: 60,
 	}
-	op, err := client.UpdateContainerState(name, req, "")
+	op, err := client.UpdateInstanceState(name, req, "")
 	if err != nil {
-		return fmt.Errorf("démarrage conteneur: %w", err)
+		return fmt.Errorf("démarrage instance: %w", err)
 	}
 	return op.Wait()
 }
@@ -90,14 +91,14 @@ func StopContainer(name string) error {
 		return fmt.Errorf("connexion LXD: %w", err)
 	}
 
-	req := api.ContainerStatePut{
+	req := api.InstanceStatePut{
 		Action:  "stop",
 		Timeout: 60,
 		Force:   true,
 	}
-	op, err := client.UpdateContainerState(name, req, "")
+	op, err := client.UpdateInstanceState(name, req, "")
 	if err != nil {
-		return fmt.Errorf("arrêt conteneur: %w", err)
+		return fmt.Errorf("arrêt instance: %w", err)
 	}
 	return op.Wait()
 }
@@ -108,9 +109,9 @@ func DeleteContainer(name string) error {
 		return fmt.Errorf("connexion LXD: %w", err)
 	}
 
-	op, err := client.DeleteContainer(name)
+	op, err := client.DeleteInstance(name)
 	if err != nil {
-		return fmt.Errorf("suppression conteneur: %w", err)
+		return fmt.Errorf("suppression instance: %w", err)
 	}
 	return op.Wait()
 }
@@ -123,9 +124,9 @@ func GetContainerIP(name string) (string, error) {
 
 	// Tentatives répétées pour attendre que l'IP soit assignée
 	for i := 0; i < 10; i++ {
-		state, _, err := client.GetContainerState(name)
+		state, _, err := client.GetInstanceState(name)
 		if err != nil {
-			return "", fmt.Errorf("état conteneur: %w", err)
+			return "", fmt.Errorf("état instance: %w", err)
 		}
 
 		for _, net := range state.Network {
@@ -146,23 +147,23 @@ func AddProxyDevice(name string, hostPort int) error {
 		return fmt.Errorf("connexion LXD: %w", err)
 	}
 
-	container, etag, err := client.GetContainer(name)
+	instance, etag, err := client.GetInstance(name)
 	if err != nil {
-		return fmt.Errorf("récupération conteneur: %w", err)
+		return fmt.Errorf("récupération instance: %w", err)
 	}
 
-	if container.Devices == nil {
-		container.Devices = make(map[string]map[string]string)
+	if instance.Devices == nil {
+		instance.Devices = make(map[string]map[string]string)
 	}
 
-	container.Devices["proxy-web"] = map[string]string{
+	instance.Devices["proxy-web"] = map[string]string{
 		"type":    "proxy",
 		"listen":  fmt.Sprintf("tcp:0.0.0.0:%d", hostPort),
 		"connect": "tcp:127.0.0.1:80",
 		"bind":    "host",
 	}
 
-	op, err := client.UpdateContainer(name, container.Writable(), etag)
+	op, err := client.UpdateInstance(name, instance.Writable(), etag)
 	if err != nil {
 		return fmt.Errorf("ajout proxy device: %w", err)
 	}
@@ -175,7 +176,7 @@ func PushFile(containerName, destPath, content string) error {
 		return fmt.Errorf("connexion LXD: %w", err)
 	}
 
-	args := lxdclient.ContainerFileArgs{
+	args := lxdclient.InstanceFileArgs{
 		Content:   io.NopCloser(strings.NewReader(content)),
 		UID:       0,
 		GID:       0,
@@ -184,7 +185,7 @@ func PushFile(containerName, destPath, content string) error {
 		WriteMode: "overwrite",
 	}
 
-	return client.CreateContainerFile(containerName, destPath, args)
+	return client.CreateInstanceFile(containerName, destPath, args)
 }
 
 func ExecCommand(containerName string, command []string, env map[string]string) error {
@@ -193,14 +194,14 @@ func ExecCommand(containerName string, command []string, env map[string]string) 
 		return fmt.Errorf("connexion LXD: %w", err)
 	}
 
-	req := api.ContainerExecPost{
+	req := api.InstanceExecPost{
 		Command:     command,
 		WaitForWS:   false,
 		Interactive: false,
 		Environment: env,
 	}
 
-	op, err := client.ExecContainer(containerName, req, nil)
+	op, err := client.ExecInstance(containerName, req, nil)
 	if err != nil {
 		return fmt.Errorf("exécution commande: %w", err)
 	}
