@@ -35,5 +35,5 @@ frontend/yarn-error.log*
 *.log
 logs/
 
-# Docker
-.dockerignore
+# Docker (ne pas ignorer les .dockerignore des sous-dossiers)
+# .dockerignore

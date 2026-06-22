@@ -1,0 +1,58 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: zadia-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zadia
+      POSTGRES_PASSWORD: zadia
+      POSTGRES_DB: zadiahost
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zadia -d zadiahost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: zadia-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://zadia:zadia@postgres:5432/zadiahost?sslmode=disable
+      PORT: 8080
+    ports:
+      - "8080:8080"
+    volumes:
+      # Montage du socket LXD de l'hôte pour que le backend puisse contrôler LXD
+      - /var/snap/lxd/common/lxd/unix.socket:/var/snap/lxd/common/lxd/unix.socket
+    network_mode: host
+    # Note : network_mode: host est nécessaire pour accéder au socket LXD
+    # et pour que les proxy devices LXD fonctionnent correctement.
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: zadia-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
+    driver: local

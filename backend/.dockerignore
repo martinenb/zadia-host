@@ -1,0 +1,5 @@
+zadia-backend
+*.exe
+vendor/
+*.db
+*.log
