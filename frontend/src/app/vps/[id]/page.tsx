@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import DeploySection from "@/components/DeploySection"
 import EnvVarsSection from "@/components/EnvVarsSection"
-import { ArrowLeft, Play, Square, Trash2, Cpu, HardDrive, MemoryStick, ExternalLink, Loader2 } from "lucide-react"
+import { ArrowLeft, Play, Square, Trash2, Cpu, HardDrive, MemoryStick, ExternalLink, Loader2, Terminal } from "lucide-react"
 
 interface VPS {
   id: number
@@ -208,25 +208,55 @@ export default function VPSDetailPage() {
           </Card>
 
           {/* SSH */}
-          {vps.ssh_port > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium">Accès SSH</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Commande</p>
-                  <code className="text-xs bg-muted px-2 py-1.5 rounded block font-mono select-all">
-                    ssh root@host.mcmr.eu -p {vps.ssh_port}
-                  </code>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Terminal className="h-4 w-4" />
+                Accès SSH
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {vps.ssh_port > 0 ? (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Commande</p>
+                    <code className="text-xs bg-muted px-2 py-1.5 rounded block font-mono select-all break-all">
+                      ssh root@host.mcmr.eu -p {vps.ssh_port}
+                    </code>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Mot de passe</p>
+                    <SSHPassword password={vps.ssh_password} />
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Mot de passe</p>
-                  <SSHPassword password={vps.ssh_password} />
+              ) : (
+                <div className="text-center py-3 space-y-3">
+                  <p className="text-xs text-muted-foreground">SSH non configuré sur ce VPS.</p>
+                  {vps.status === "running" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs"
+                      disabled={actionLoading === "ssh"}
+                      onClick={async () => {
+                        setActionLoading("ssh")
+                        await fetch(`/api/vps/${id}/setup-ssh`, { method: "POST" })
+                        // Attendre ~30s que le setup se termine, puis rafraîchir
+                        setTimeout(() => { fetchVPS(); setActionLoading("") }, 30000)
+                        fetchVPS()
+                      }}
+                    >
+                      {actionLoading === "ssh" ? (
+                        <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Configuration en cours (~30s)...</>
+                      ) : (
+                        <><Terminal className="h-3 w-3 mr-1.5" />Configurer SSH</>
+                      )}
+                    </Button>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              )}
+            </CardContent>
+          </Card>
 
           {/* Variables d'environnement */}
           <Card>

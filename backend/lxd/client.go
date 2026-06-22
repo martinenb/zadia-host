@@ -280,6 +280,27 @@ func EnsureDirectory(containerName, path string) error {
 	return ExecCommand(containerName, []string{"mkdir", "-p", path}, nil)
 }
 
+// RemoveSSHProxyDevice supprime l'ancien proxy SSH (avant d'en créer un nouveau)
+func RemoveSSHProxyDevice(name string) error {
+	client, err := ConnectLXD()
+	if err != nil {
+		return err
+	}
+	instance, etag, err := client.GetInstance(name)
+	if err != nil {
+		return err
+	}
+	if _, ok := instance.Devices["proxy-ssh"]; !ok {
+		return nil
+	}
+	delete(instance.Devices, "proxy-ssh")
+	op, err := client.UpdateInstance(name, instance.Writable(), etag)
+	if err != nil {
+		return err
+	}
+	return op.Wait()
+}
+
 // SetupSSH installe et configure openssh dans le conteneur, démarre sshd
 func SetupSSH(containerName, password, os string) error {
 	// 1. Installer openssh selon l'OS

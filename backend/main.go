@@ -53,6 +53,7 @@ func main() {
 	api.Delete("/vps/:id", handlers.DeleteVPS)
 	api.Post("/vps/:id/start", handlers.StartVPS)
 	api.Post("/vps/:id/stop", handlers.StopVPS)
+	api.Post("/vps/:id/setup-ssh", handlers.SetupSSH)
 	api.Post("/vps/:id/deploy", handlers.DeployProject)
 
 	// Routes Variables d'environnement

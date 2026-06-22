@@ -191,6 +191,45 @@ func StopVPS(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "VPS arrêté"})
 }
 
+func SetupSSH(c *fiber.Ctx) error {
+	id, err := strconv.ParseInt(c.Params("id"), 10, 64)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "ID invalide"})
+	}
+
+	vps, err := db.GetVPSByID(id)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "VPS non trouvé"})
+	}
+	if vps.Status != "running" {
+		return c.Status(400).JSON(fiber.Map{"error": "Le VPS doit être en ligne"})
+	}
+
+	containerName := fmt.Sprintf("vps-%d", vps.ID)
+	sshPass := generatePassword()
+	sshPort := 20000 + rand.Intn(5000)
+
+	go func() {
+		log.Printf("[SSH] Configuration SSH sur %s (port %d)...", containerName, sshPort)
+		if err := lxdpkg.SetupSSH(containerName, sshPass, vps.OS); err != nil {
+			log.Printf("[SSH] ERREUR %s: %v", containerName, err)
+			return
+		}
+		// Supprimer l'ancien proxy SSH si existant
+		if vps.SSHPort > 0 {
+			lxdpkg.RemoveSSHProxyDevice(containerName)
+		}
+		if err := lxdpkg.AddSSHProxyDevice(containerName, sshPort); err != nil {
+			log.Printf("[SSH] ERREUR proxy SSH %s: %v", containerName, err)
+			return
+		}
+		db.UpdateVPSSSH(id, sshPort, sshPass)
+		log.Printf("[SSH] %s — SSH configuré (port %d)", containerName, sshPort)
+	}()
+
+	return c.JSON(fiber.Map{"message": "Configuration SSH en cours..."})
+}
+
 func DeleteVPS(c *fiber.Ctx) error {
 	id, err := strconv.ParseInt(c.Params("id"), 10, 64)
 	if err != nil {
