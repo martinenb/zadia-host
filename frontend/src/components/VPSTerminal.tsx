@@ -91,10 +91,10 @@ export default function VPSTerminal({ vpsId, status }: VPSTerminalProps) {
       termRef.current = term
       fitRef.current = fit
 
-      // 3. Connexion WebSocket sur port 8085 (dédié terminal, ouvert dans Ionos)
+      // 3. Connexion WebSocket via port 80 (nginx proxie /ws/ → backend:8085)
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
       const hostname = window.location.hostname
-      const ws = new WebSocket(`${proto}//${hostname}:8085/ws/terminal/${vpsId}?token=${token}`)
+      const ws = new WebSocket(`${proto}//${hostname}/ws/terminal/${vpsId}?token=${token}`)
       ws.binaryType = "arraybuffer"
       wsRef.current = ws
 
