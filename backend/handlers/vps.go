@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"strconv"
 	"time"
@@ -61,28 +62,35 @@ func CreateVPS(c *fiber.Ctx) error {
 	hostPort := 8080 + rand.Intn(900)
 
 	go func() {
+		log.Printf("[LXD] Création de %s (OS:%s CPU:%d RAM:%dGB Disk:%dGB)", containerName, req.OS, req.VCores, req.RAMGB, req.DiskGB)
 		if err := lxdpkg.CreateContainer(containerName, req.OS, req.VCores, req.RAMGB, req.DiskGB); err != nil {
+			log.Printf("[LXD] ERREUR création %s: %v", containerName, err)
 			db.UpdateVPSStatus(id, "error", "")
 			return
 		}
+		log.Printf("[LXD] %s créé, démarrage...", containerName)
 
 		if err := lxdpkg.StartContainer(containerName); err != nil {
+			log.Printf("[LXD] ERREUR démarrage %s: %v", containerName, err)
 			db.UpdateVPSStatus(id, "error", "")
 			return
 		}
+		log.Printf("[LXD] %s démarré, attente IP...", containerName)
 
 		time.Sleep(3 * time.Second)
 
 		if err := lxdpkg.AddProxyDevice(containerName, hostPort); err != nil {
-			fmt.Printf("Avertissement proxy device: %v\n", err)
+			log.Printf("[LXD] AVERTISSEMENT proxy device %s port %d: %v", containerName, hostPort, err)
 		}
 		db.UpdateVPSHostPort(id, hostPort)
 
 		ip, err := lxdpkg.GetContainerIP(containerName)
 		if err != nil {
+			log.Printf("[LXD] AVERTISSEMENT IP %s: %v", containerName, err)
 			ip = "en attente..."
 		}
 
+		log.Printf("[LXD] %s prêt — IP:%s port:%d", containerName, ip, hostPort)
 		db.UpdateVPSStatus(id, "running", ip)
 	}()
 
