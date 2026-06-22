@@ -135,6 +135,19 @@ func TerminalHandler(w http.ResponseWriter, r *http.Request) {
 
 	containerName := fmt.Sprintf("vps-%d", id)
 
+	// Log des headers reçus pour diagnostiquer Cloudflare
+	log.Printf("Terminal: tentative upgrade vps-%d | Connection=%q | Upgrade=%q",
+		id, r.Header.Get("Connection"), r.Header.Get("Upgrade"))
+
+	// Cloudflare (et autres proxies) retirent le header hop-by-hop "Connection".
+	// Gorilla/websocket exige "Connection: upgrade" — on le restaure si absent.
+	if r.Header.Get("Connection") == "" {
+		r.Header.Set("Connection", "upgrade")
+	}
+	if r.Header.Get("Upgrade") == "" {
+		r.Header.Set("Upgrade", "websocket")
+	}
+
 	// Upgrade HTTP → WebSocket
 	ws, err := wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
